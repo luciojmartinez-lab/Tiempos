@@ -197,6 +197,12 @@ body[data-active-view="graficos"] .ribbon {
   background: var(--blue-soft);
 }
 
+.danger-tool {
+  border-color: #f0c4c4;
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
 .task-buttons {
   display: flex;
   flex-wrap: wrap;
@@ -206,7 +212,7 @@ body[data-active-view="graficos"] .ribbon {
 
 .new-task {
   display: grid;
-  grid-template-columns: minmax(140px, 1fr) auto;
+  grid-template-columns: minmax(140px, 1fr) auto auto;
   gap: 6px;
   min-width: 0;
 }
@@ -226,6 +232,11 @@ body[data-active-view="graficos"] .ribbon {
 .task-button.active {
   background: var(--accent);
   color: #fff;
+}
+
+.open-entry-button,
+.entry-modal-head {
+  display: none;
 }
 
 .view {
@@ -694,7 +705,7 @@ th:nth-child(10) {
   }
 
   .new-task {
-    grid-template-columns: minmax(0, 1fr) 42px;
+    grid-template-columns: minmax(0, 1fr) 42px 42px;
   }
 
   .view {
@@ -708,8 +719,61 @@ th:nth-child(10) {
     gap: 10px;
   }
 
+  .open-entry-button {
+    display: block;
+    width: 100%;
+    min-height: 42px;
+    border: 0;
+    border-radius: 8px;
+    background: var(--primary);
+    color: #fff;
+    font-weight: 800;
+    box-shadow: var(--shadow);
+  }
+
   .entry-panel {
-    grid-row: auto;
+    position: fixed;
+    inset: 10px;
+    z-index: 60;
+    display: none;
+    max-height: calc(100dvh - 20px);
+    overflow: auto;
+    padding: 12px;
+  }
+
+  .entry-panel.modal-open {
+    display: block;
+  }
+
+  .entry-modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .entry-modal-head strong {
+    font-size: 15px;
+  }
+
+  .close-entry {
+    min-height: 30px;
+    padding: 5px 10px;
+  }
+
+  body.entry-modal-open {
+    overflow: hidden;
+  }
+
+  body.entry-modal-open::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    background: rgba(15, 23, 42, 0.38);
   }
 
   .stats-strip,
@@ -796,7 +860,7 @@ th:nth-child(10) {
   }
 
   .new-task {
-    grid-template-columns: minmax(0, 1fr) 36px;
+    grid-template-columns: minmax(0, 1fr) 36px 36px;
   }
 
   .new-task input {
@@ -820,6 +884,8 @@ th:nth-child(10) {
   }
 
   .entry-panel {
+    inset: 8px;
+    max-height: calc(100dvh - 16px);
     padding: 8px;
   }
 

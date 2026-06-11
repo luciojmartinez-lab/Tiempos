@@ -26,7 +26,7 @@
             ><span class="live-indicator"></span> Control de trabajo</span
           >
         </div>
-        <span class="version-badge">100v2</span>
+        <span class="version-badge">100v3</span>
       </div>
       <nav class="navbar-row-menu" aria-label="Hojas">
         <button class="nav-item active" type="button" data-view="datos">
@@ -76,13 +76,31 @@
             <button class="tool-button" type="button" id="add-task">
               +
             </button>
+            <button
+              class="tool-button danger-tool"
+              type="button"
+              id="delete-task"
+              aria-label="Eliminar tarea seleccionada"
+              title="Eliminar tarea seleccionada"
+            >
+              -
+            </button>
           </div>
           <div class="task-buttons" id="task-buttons"></div>
         </div>
       </section>
 
       <section class="view active" id="datos-view" data-screen="datos">
+        <button class="open-entry-button" type="button" id="open-entry-modal">
+          Entrar tiempos
+        </button>
         <section class="entry-panel">
+          <div class="entry-modal-head">
+            <strong>Entrada de tiempos</strong>
+            <button class="ghost close-entry" type="button" id="close-entry-modal">
+              Cerrar
+            </button>
+          </div>
           <form id="entry-form" autocomplete="off">
             <div class="form-grid">
               <label>

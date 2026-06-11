@@ -1,5 +1,6 @@
 const STORAGE_KEY = "tiempos.entries.100v1";
 const CUSTOM_TASKS_KEY = "tiempos.customTasks.100v2";
+const DELETED_TASKS_KEY = "tiempos.deletedTasks.100v3";
 
 const TASKS = [
   "UNI",
@@ -87,6 +88,7 @@ const SAMPLE_ENTRIES = [
 const state = {
   entries: loadEntries(),
   customTasks: loadCustomTasks(),
+  deletedTasks: loadDeletedTasks(),
   editingId: null,
   search: "",
   sortOrder: "desc",
@@ -113,6 +115,10 @@ function bindElements() {
     taskButtons: document.getElementById("task-buttons"),
     newTaskInput: document.getElementById("new-task-input"),
     addTask: document.getElementById("add-task"),
+    deleteTask: document.getElementById("delete-task"),
+    entryPanel: document.querySelector(".entry-panel"),
+    openEntry: document.getElementById("open-entry-modal"),
+    closeEntry: document.getElementById("close-entry-modal"),
     taskSelect: document.getElementById("entry-task"),
     form: document.getElementById("entry-form"),
     date: document.getElementById("entry-date"),
@@ -169,11 +175,15 @@ function buildTaskControls() {
 }
 
 function getTaskList() {
+  const deletedTasks = new Set(state.deletedTasks);
+  const baseTasks = TASKS.filter((task) => !deletedTasks.has(task));
   const customTasks = state.customTasks.filter((task) => !TASKS.includes(task));
   const extras = state.entries
     .map((entry) => cleanText(entry.task).toUpperCase())
     .filter((task) => task && !TASKS.includes(task));
-  return [...TASKS, ...new Set([...customTasks, ...extras])];
+  return [...baseTasks, ...new Set([...customTasks, ...extras])].filter(
+    (task) => !deletedTasks.has(task),
+  );
 }
 
 function bindEvents() {
@@ -190,11 +200,17 @@ function bindEvents() {
 
   els.task.addEventListener("change", updateTaskButtonState);
   els.addTask.addEventListener("click", addTaskFromInput);
+  els.deleteTask.addEventListener("click", deleteSelectedTask);
   els.newTaskInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
       addTaskFromInput();
     }
+  });
+  els.openEntry.addEventListener("click", startNewEntryFromButton);
+  els.closeEntry.addEventListener("click", closeEntryModal);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeEntryModal();
   });
   els.today.addEventListener("click", () => {
     els.date.value = todayISO();
@@ -235,6 +251,8 @@ function setView(view) {
 function addTaskFromInput() {
   const task = cleanText(els.newTaskInput.value).toUpperCase();
   if (!task) return;
+  state.deletedTasks = state.deletedTasks.filter((item) => item !== task);
+  persistDeletedTasks();
   if (!getTaskList().includes(task)) {
     state.customTasks.push(task);
     persistCustomTasks();
@@ -243,6 +261,57 @@ function addTaskFromInput() {
   els.task.value = task;
   els.newTaskInput.value = "";
   updateTaskButtonState();
+}
+
+function deleteSelectedTask() {
+  const task = cleanText(els.task.value).toUpperCase();
+  if (!task) return;
+
+  const taskHasEntries = state.entries.some(
+    (entry) => cleanText(entry.task).toUpperCase() === task,
+  );
+
+  if (taskHasEntries) {
+    alert("No se puede eliminar una tarea que ya tiene registros.");
+    return;
+  }
+
+  state.customTasks = state.customTasks.filter((item) => item !== task);
+  if (TASKS.includes(task) && !state.deletedTasks.includes(task)) {
+    state.deletedTasks.push(task);
+  }
+
+  persistCustomTasks();
+  persistDeletedTasks();
+  buildTaskControls();
+  els.task.value = getTaskList()[0] || "";
+  updateTaskButtonState();
+}
+
+function startNewEntryFromButton() {
+  const selectedTask = els.task.value || getTaskList()[0] || TASKS[0];
+  resetForm();
+  els.task.value = selectedTask;
+  updateTaskButtonState();
+  openEntryModal();
+}
+
+function openEntryModal() {
+  els.entryPanel.classList.add("modal-open");
+  document.body.classList.add("entry-modal-open");
+}
+
+function closeEntryModal() {
+  els.entryPanel.classList.remove("modal-open");
+  document.body.classList.remove("entry-modal-open");
+}
+
+function closeEntryModalOnMobile() {
+  if (isMobileLayout()) closeEntryModal();
+}
+
+function isMobileLayout() {
+  return window.matchMedia("(max-width: 980px)").matches;
 }
 
 function setInitialView() {
@@ -281,6 +350,7 @@ function saveCurrent(event) {
   persist();
   resetForm();
   render();
+  closeEntryModalOnMobile();
 }
 
 function deleteCurrent() {
@@ -289,9 +359,10 @@ function deleteCurrent() {
   persist();
   resetForm();
   render();
+  closeEntryModalOnMobile();
 }
 
-function editEntry(id) {
+function editEntry(id, options = {}) {
   const entry = state.entries.find((item) => item.id === id);
   if (!entry) return;
 
@@ -304,7 +375,8 @@ function editEntry(id) {
   els.end.value = entry.end || "";
   els.save.textContent = "Actualizar";
   updateTaskButtonState();
-  renderEntries();
+  highlightEditingEntry();
+  if (options.openModal) openEntryModal();
 }
 
 function resetForm() {
@@ -370,6 +442,9 @@ function renderEntries() {
 
   els.body.querySelectorAll("tr").forEach((row) => {
     row.addEventListener("click", () => editEntry(row.dataset.id));
+    row.addEventListener("dblclick", () =>
+      editEntry(row.dataset.id, { openModal: true }),
+    );
   });
 
   els.mobileList.innerHTML = rows
@@ -391,12 +466,35 @@ function renderEntries() {
 
   els.mobileList.querySelectorAll(".entry-card").forEach((card) => {
     card.addEventListener("click", () => editEntry(card.dataset.id));
+    card.addEventListener("dblclick", () =>
+      editEntry(card.dataset.id, { openModal: true }),
+    );
+  });
+}
+
+function highlightEditingEntry() {
+  els.body.querySelectorAll("tr").forEach((row) => {
+    row.classList.toggle("selected", row.dataset.id === state.editingId);
+  });
+
+  els.mobileList.querySelectorAll(".entry-card").forEach((card) => {
+    card.classList.toggle("selected", card.dataset.id === state.editingId);
   });
 }
 
 function sortRowsForDisplay(rows) {
   const sorted = rows.slice().sort(compareEntries);
-  return state.sortOrder === "asc" ? sorted : sorted.reverse();
+  const groups = new Map();
+  sorted.forEach((row) => {
+    const date = row.date || "";
+    if (!groups.has(date)) groups.set(date, []);
+    groups.get(date).push(row);
+  });
+
+  const dates = [...groups.keys()].sort();
+  if (state.sortOrder === "desc") dates.reverse();
+
+  return dates.flatMap((date) => groups.get(date));
 }
 
 function renderCharts() {
@@ -643,12 +741,26 @@ function loadCustomTasks() {
   return [];
 }
 
+function loadDeletedTasks() {
+  try {
+    const saved = localStorage.getItem(DELETED_TASKS_KEY);
+    if (saved) return JSON.parse(saved);
+  } catch {
+    localStorage.removeItem(DELETED_TASKS_KEY);
+  }
+  return [];
+}
+
 function persist() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state.entries));
 }
 
 function persistCustomTasks() {
   localStorage.setItem(CUSTOM_TASKS_KEY, JSON.stringify(state.customTasks));
+}
+
+function persistDeletedTasks() {
+  localStorage.setItem(DELETED_TASKS_KEY, JSON.stringify(state.deletedTasks));
 }
 
 async function handleFileLoad() {
