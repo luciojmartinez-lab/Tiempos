@@ -91,6 +91,7 @@ const state = {
   deletedTasks: loadDeletedTasks(),
   editingId: null,
   search: "",
+  dateFilter: "",
   sortOrder: "desc",
 };
 
@@ -103,6 +104,7 @@ function init() {
   buildTaskControls();
   bindEvents();
   setTodayIfEmpty();
+  updateDateFilterState();
   render();
   setInitialView();
   registerServiceWorker();
@@ -138,6 +140,8 @@ function bindElements() {
     exportCsv: document.getElementById("export-csv"),
     exportJson: document.getElementById("export-json"),
     search: document.getElementById("search-box"),
+    dateFilter: document.getElementById("date-filter"),
+    clearDateFilter: document.getElementById("clear-date-filter"),
     sortOrder: document.getElementById("sort-order"),
     body: document.getElementById("entries-body"),
     mobileList: document.getElementById("mobile-list"),
@@ -214,18 +218,34 @@ function bindEvents() {
   });
   els.today.addEventListener("click", () => {
     els.date.value = todayISO();
+    openEntryModalOnMobile();
   });
   els.startNow.addEventListener("click", () => {
+    if (!els.date.value) els.date.value = todayISO();
     els.start.value = nowTime();
+    openEntryModalOnMobile();
   });
   els.endNow.addEventListener("click", () => {
+    if (!els.date.value) els.date.value = todayISO();
     els.end.value = nowTime();
+    openEntryModalOnMobile();
   });
   els.clear.addEventListener("click", resetForm);
   els.remove.addEventListener("click", deleteCurrent);
   els.form.addEventListener("submit", saveCurrent);
   els.search.addEventListener("input", () => {
     state.search = els.search.value.trim().toLowerCase();
+    renderEntries();
+  });
+  els.dateFilter.addEventListener("change", () => {
+    state.dateFilter = els.dateFilter.value;
+    updateDateFilterState();
+    renderEntries();
+  });
+  els.clearDateFilter.addEventListener("click", () => {
+    state.dateFilter = "";
+    els.dateFilter.value = "";
+    updateDateFilterState();
     renderEntries();
   });
   els.sortOrder.addEventListener("change", () => {
@@ -308,6 +328,10 @@ function closeEntryModal() {
 
 function closeEntryModalOnMobile() {
   if (isMobileLayout()) closeEntryModal();
+}
+
+function openEntryModalOnMobile() {
+  if (isMobileLayout()) openEntryModal();
 }
 
 function isMobileLayout() {
@@ -399,6 +423,12 @@ function updateTaskButtonState() {
   document.querySelectorAll(".task-button").forEach((button) => {
     button.classList.toggle("active", button.dataset.task === els.task.value);
   });
+}
+
+function updateDateFilterState() {
+  const active = Boolean(state.dateFilter);
+  els.clearDateFilter.hidden = !active;
+  els.dateFilter.classList.toggle("active", active);
 }
 
 function render() {
@@ -622,6 +652,7 @@ function computeStats(rows) {
 }
 
 function matchesSearch(row) {
+  if (state.dateFilter && row.date !== state.dateFilter) return false;
   if (!state.search) return true;
   return [
     row.date,

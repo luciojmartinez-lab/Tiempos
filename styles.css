@@ -415,6 +415,20 @@ select:focus {
   width: 150px;
 }
 
+#date-filter {
+  width: 148px;
+}
+
+#date-filter.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.clear-date-filter {
+  min-height: 38px;
+  padding: 7px 10px;
+}
+
 #search-box {
   width: min(260px, 45vw);
 }
@@ -972,12 +986,23 @@ th:nth-child(10) {
 
   .table-actions {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
   }
 
   .table-actions select,
+  #date-filter,
   #search-box {
     width: 100%;
+  }
+
+  #search-box {
+    grid-column: 1 / -1;
+  }
+
+  .clear-date-filter {
+    min-height: 32px;
+    padding: 5px 8px;
+    font-size: 12px;
   }
 
   table {
