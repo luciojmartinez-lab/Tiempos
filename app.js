@@ -100,6 +100,7 @@ function init() {
   setTodayIfEmpty();
   render();
   setInitialView();
+  registerServiceWorker();
 }
 
 function bindElements() {
@@ -215,6 +216,13 @@ function setView(view) {
 function setInitialView() {
   const requested = new URLSearchParams(window.location.search).get("view");
   setView(requested === "graficos" ? "graficos" : "datos");
+}
+
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/service-worker.js").catch(() => {});
+  });
 }
 
 function saveCurrent(event) {
