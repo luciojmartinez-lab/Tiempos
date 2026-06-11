@@ -203,6 +203,10 @@ body[data-active-view="graficos"] .ribbon {
   color: var(--danger);
 }
 
+#delete-task[hidden] {
+  display: block;
+}
+
 .task-buttons {
   display: flex;
   flex-wrap: wrap;
@@ -236,6 +240,11 @@ body[data-active-view="graficos"] .ribbon {
 
 .open-entry-button,
 .entry-modal-head {
+  display: none;
+}
+
+.open-entry-button[hidden],
+.entry-modal-head[hidden] {
   display: none;
 }
 
@@ -731,6 +740,10 @@ th:nth-child(10) {
     box-shadow: var(--shadow);
   }
 
+  .open-entry-button[hidden] {
+    display: block;
+  }
+
   .entry-panel {
     position: fixed;
     inset: 10px;
@@ -753,6 +766,10 @@ th:nth-child(10) {
     margin-bottom: 10px;
     padding-bottom: 8px;
     border-bottom: 1px solid var(--line);
+  }
+
+  .entry-modal-head[hidden] {
+    display: flex;
   }
 
   .entry-modal-head strong {
