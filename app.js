@@ -132,9 +132,6 @@ function bindElements() {
     save: document.getElementById("save-entry"),
     clear: document.getElementById("clear-form"),
     remove: document.getElementById("delete-entry"),
-    today: document.getElementById("today-button"),
-    startNow: document.getElementById("start-now"),
-    endNow: document.getElementById("end-now"),
     loadFile: document.getElementById("load-file"),
     fileInput: document.getElementById("file-input"),
     exportCsv: document.getElementById("export-csv"),
@@ -215,20 +212,6 @@ function bindEvents() {
   els.closeEntry.addEventListener("click", closeEntryModal);
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") closeEntryModal();
-  });
-  els.today.addEventListener("click", () => {
-    els.date.value = todayISO();
-    openEntryModalOnMobile();
-  });
-  els.startNow.addEventListener("click", () => {
-    if (!els.date.value) els.date.value = todayISO();
-    els.start.value = nowTime();
-    openEntryModalOnMobile();
-  });
-  els.endNow.addEventListener("click", () => {
-    if (!els.date.value) els.date.value = todayISO();
-    els.end.value = nowTime();
-    openEntryModalOnMobile();
   });
   els.clear.addEventListener("click", resetForm);
   els.remove.addEventListener("click", deleteCurrent);
@@ -328,10 +311,6 @@ function closeEntryModal() {
 
 function closeEntryModalOnMobile() {
   if (isMobileLayout()) closeEntryModal();
-}
-
-function openEntryModalOnMobile() {
-  if (isMobileLayout()) openEntryModal();
 }
 
 function isMobileLayout() {

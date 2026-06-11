@@ -137,7 +137,7 @@ button {
 
 .ribbon {
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr);
   gap: 12px;
   padding: 10px 12px;
   border-bottom: 1px solid var(--line);
@@ -415,8 +415,31 @@ select:focus {
   width: 150px;
 }
 
-#date-filter {
+.date-filter-field {
+  position: relative;
+  display: block;
   width: 148px;
+  color: var(--muted);
+  font-size: 0;
+  font-weight: 800;
+}
+
+.date-filter-field span {
+  position: absolute;
+  top: 50%;
+  left: 10px;
+  z-index: 1;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1;
+  pointer-events: none;
+  text-transform: uppercase;
+  transform: translateY(-50%);
+}
+
+#date-filter {
+  width: 100%;
+  padding-left: 42px;
 }
 
 #date-filter.active {
@@ -701,10 +724,6 @@ th:nth-child(10) {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .utils-ribbon {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .ribbon-title {
     grid-column: 1 / -1;
   }
@@ -885,7 +904,6 @@ th:nth-child(10) {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .utils-ribbon,
   .task-buttons {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -990,6 +1008,7 @@ th:nth-child(10) {
   }
 
   .table-actions select,
+  .date-filter-field,
   #date-filter,
   #search-box {
     width: 100%;

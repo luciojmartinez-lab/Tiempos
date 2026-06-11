@@ -10,12 +10,12 @@
     <meta name="apple-mobile-web-app-title" content="Tiempos" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
-    <link rel="stylesheet" href="/styles.css?v=100v5" />
+    <link rel="stylesheet" href="/styles.css?v=100v6" />
     <script
       defer
       src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"
     ></script>
-    <script defer src="/app.js?v=100v5"></script>
+    <script defer src="/app.js?v=100v6"></script>
   </head>
   <body>
     <header class="top-navbar">
@@ -26,7 +26,7 @@
             ><span class="live-indicator"></span> Control de trabajo</span
           >
         </div>
-        <span class="version-badge">100v5</span>
+        <span class="version-badge">100v6</span>
       </div>
       <nav class="navbar-row-menu" aria-label="Hojas">
         <button class="nav-item active" type="button" data-view="datos">
@@ -50,18 +50,6 @@
           </button>
           <button class="tool-button" type="button" id="export-json">
             Backup
-          </button>
-        </div>
-        <div class="ribbon-group utils-ribbon">
-          <span class="ribbon-title">Utiles</span>
-          <button class="tool-button" type="button" id="today-button">
-            Fecha dia
-          </button>
-          <button class="tool-button" type="button" id="start-now">
-            Inicio ahora
-          </button>
-          <button class="tool-button" type="button" id="end-now">
-            Fin ahora
           </button>
         </div>
         <div class="ribbon-group tasks-ribbon">
@@ -175,11 +163,14 @@
                 <option value="desc">Nuevo a viejo</option>
                 <option value="asc">Viejo a nuevo</option>
               </select>
-              <input
-                type="date"
-                id="date-filter"
-                aria-label="Filtrar por dia"
-              />
+              <label class="date-filter-field">
+                <span>Dia</span>
+                <input
+                  type="date"
+                  id="date-filter"
+                  aria-label="Filtrar por dia"
+                />
+              </label>
               <button
                 class="ghost clear-date-filter"
                 type="button"
