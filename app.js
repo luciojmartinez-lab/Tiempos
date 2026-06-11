@@ -1,6 +1,7 @@
 const STORAGE_KEY = "tiempos.entries.100v1";
 const CUSTOM_TASKS_KEY = "tiempos.customTasks.100v2";
 const DELETED_TASKS_KEY = "tiempos.deletedTasks.100v3";
+const APP_VERSION = "100v8";
 
 const TASKS = [
   "UNI",
@@ -108,6 +109,7 @@ function init() {
   render();
   setInitialView();
   registerServiceWorker();
+  checkForAppUpdate();
 }
 
 function bindElements() {
@@ -365,6 +367,27 @@ function registerServiceWorker() {
 function activateWaitingServiceWorker(registration) {
   if (registration.waiting && navigator.serviceWorker.controller) {
     registration.waiting.postMessage({ type: "SKIP_WAITING" });
+  }
+}
+
+async function checkForAppUpdate() {
+  try {
+    const response = await fetch(`/version.json?t=${Date.now()}`, {
+      cache: "no-store",
+    });
+    if (!response.ok) return;
+
+    const latest = await response.json();
+    if (!latest.version || latest.version === APP_VERSION) return;
+
+    if ("caches" in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((key) => caches.delete(key)));
+    }
+
+    window.location.reload();
+  } catch {
+    // Sin conexion o sin version remota: seguimos usando la app instalada.
   }
 }
 
