@@ -1,4 +1,5 @@
 const STORAGE_KEY = "tiempos.entries.100v1";
+const CUSTOM_TASKS_KEY = "tiempos.customTasks.100v2";
 
 const TASKS = [
   "UNI",
@@ -85,8 +86,10 @@ const SAMPLE_ENTRIES = [
 
 const state = {
   entries: loadEntries(),
+  customTasks: loadCustomTasks(),
   editingId: null,
   search: "",
+  sortOrder: "desc",
 };
 
 const els = {};
@@ -108,6 +111,8 @@ function bindElements() {
     navItems: document.querySelectorAll(".nav-item"),
     views: document.querySelectorAll(".view"),
     taskButtons: document.getElementById("task-buttons"),
+    newTaskInput: document.getElementById("new-task-input"),
+    addTask: document.getElementById("add-task"),
     taskSelect: document.getElementById("entry-task"),
     form: document.getElementById("entry-form"),
     date: document.getElementById("entry-date"),
@@ -127,6 +132,7 @@ function bindElements() {
     exportCsv: document.getElementById("export-csv"),
     exportJson: document.getElementById("export-json"),
     search: document.getElementById("search-box"),
+    sortOrder: document.getElementById("sort-order"),
     body: document.getElementById("entries-body"),
     mobileList: document.getElementById("mobile-list"),
     statAverage: document.getElementById("stat-average"),
@@ -148,25 +154,26 @@ function buildTaskControls() {
 
   els.task.innerHTML = taskList
     .map(
-    (task) => `<option value="${escapeAttr(task)}">${escapeHtml(task)}</option>`,
+      (task) => `<option value="${escapeAttr(task)}">${escapeHtml(task)}</option>`,
     )
     .join("");
 
   els.taskButtons.innerHTML = taskList
     .map(
-    (task) =>
-      `<button class="task-button" type="button" data-task="${escapeAttr(
-        task,
-      )}">${escapeHtml(task)}</button>`,
+      (task) =>
+        `<button class="task-button" type="button" data-task="${escapeAttr(
+          task,
+        )}">${escapeHtml(task)}</button>`,
     )
     .join("");
 }
 
 function getTaskList() {
+  const customTasks = state.customTasks.filter((task) => !TASKS.includes(task));
   const extras = state.entries
     .map((entry) => cleanText(entry.task).toUpperCase())
     .filter((task) => task && !TASKS.includes(task));
-  return [...TASKS, ...new Set(extras)];
+  return [...TASKS, ...new Set([...customTasks, ...extras])];
 }
 
 function bindEvents() {
@@ -182,6 +189,13 @@ function bindEvents() {
   });
 
   els.task.addEventListener("change", updateTaskButtonState);
+  els.addTask.addEventListener("click", addTaskFromInput);
+  els.newTaskInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      addTaskFromInput();
+    }
+  });
   els.today.addEventListener("click", () => {
     els.date.value = todayISO();
   });
@@ -198,6 +212,10 @@ function bindEvents() {
     state.search = els.search.value.trim().toLowerCase();
     renderEntries();
   });
+  els.sortOrder.addEventListener("change", () => {
+    state.sortOrder = els.sortOrder.value;
+    renderEntries();
+  });
   els.loadFile.addEventListener("click", () => els.fileInput.click());
   els.fileInput.addEventListener("change", handleFileLoad);
   els.exportCsv.addEventListener("click", exportCsv);
@@ -205,12 +223,26 @@ function bindEvents() {
 }
 
 function setView(view) {
+  document.body.dataset.activeView = view;
   els.navItems.forEach((button) => {
     button.classList.toggle("active", button.dataset.view === view);
   });
   els.views.forEach((screen) => {
     screen.classList.toggle("active", screen.dataset.screen === view);
   });
+}
+
+function addTaskFromInput() {
+  const task = cleanText(els.newTaskInput.value).toUpperCase();
+  if (!task) return;
+  if (!getTaskList().includes(task)) {
+    state.customTasks.push(task);
+    persistCustomTasks();
+  }
+  buildTaskControls();
+  els.task.value = task;
+  els.newTaskInput.value = "";
+  updateTaskButtonState();
 }
 
 function setInitialView() {
@@ -279,7 +311,7 @@ function resetForm() {
   state.editingId = null;
   els.form.reset();
   els.date.value = todayISO();
-  els.task.value = TASKS[0];
+  els.task.value = getTaskList()[0] || TASKS[0];
   els.save.textContent = "Guardar";
   updateTaskButtonState();
   renderEntries();
@@ -287,7 +319,7 @@ function resetForm() {
 
 function setTodayIfEmpty() {
   if (!els.date.value) els.date.value = todayISO();
-  if (!els.task.value) els.task.value = TASKS[0];
+  if (!els.task.value) els.task.value = getTaskList()[0] || TASKS[0];
   updateTaskButtonState();
 }
 
@@ -315,7 +347,7 @@ function renderStats() {
 }
 
 function renderEntries() {
-  const rows = computeRows().filter(matchesSearch);
+  const rows = sortRowsForDisplay(computeRows().filter(matchesSearch));
 
   els.body.innerHTML = rows
     .map(
@@ -346,12 +378,13 @@ function renderEntries() {
         row.id === state.editingId ? "selected" : ""
       }" type="button" data-id="${row.id}">
         <span class="entry-card-head">
-          <strong>${formatDate(row.date)} · ${escapeHtml(row.task)}</strong>
+          <strong>${formatDate(row.date)} - ${escapeHtml(row.task)}</strong>
           <small>${row.partialMinutes ? minutesToDuration(row.partialMinutes) : ""}</small>
         </span>
         <span>${escapeHtml(row.description || "-")}</span>
         <small>${escapeHtml(row.start || "--:--")} - ${escapeHtml(row.end || "--:--")}
-          · Total ${row.totalMinutes ? minutesToDuration(row.totalMinutes) : "0:00"}</small>
+          - Diario ${row.dailyMinutes ? minutesToDuration(row.dailyMinutes) : "-"}
+          - Total ${row.totalMinutes ? minutesToDuration(row.totalMinutes) : "0:00"}</small>
       </button>`,
     )
     .join("");
@@ -359,6 +392,11 @@ function renderEntries() {
   els.mobileList.querySelectorAll(".entry-card").forEach((card) => {
     card.addEventListener("click", () => editEntry(card.dataset.id));
   });
+}
+
+function sortRowsForDisplay(rows) {
+  const sorted = rows.slice().sort(compareEntries);
+  return state.sortOrder === "asc" ? sorted : sorted.reverse();
 }
 
 function renderCharts() {
@@ -595,8 +633,22 @@ function loadEntries() {
   return SAMPLE_ENTRIES;
 }
 
+function loadCustomTasks() {
+  try {
+    const saved = localStorage.getItem(CUSTOM_TASKS_KEY);
+    if (saved) return JSON.parse(saved);
+  } catch {
+    localStorage.removeItem(CUSTOM_TASKS_KEY);
+  }
+  return [];
+}
+
 function persist() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state.entries));
+}
+
+function persistCustomTasks() {
+  localStorage.setItem(CUSTOM_TASKS_KEY, JSON.stringify(state.customTasks));
 }
 
 async function handleFileLoad() {

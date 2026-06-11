@@ -39,6 +39,13 @@ body {
   overflow: hidden;
 }
 
+button {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 button,
 input,
 select {
@@ -157,6 +164,10 @@ button {
   grid-auto-columns: auto;
 }
 
+body[data-active-view="graficos"] .ribbon {
+  display: none;
+}
+
 .ribbon-title {
   align-self: center;
   color: var(--muted);
@@ -191,6 +202,19 @@ button {
   flex-wrap: wrap;
   gap: 6px;
   min-width: 0;
+}
+
+.new-task {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) auto;
+  gap: 6px;
+  min-width: 0;
+}
+
+.new-task input {
+  min-width: 0;
+  min-height: 34px;
+  border-color: #bbdfca;
 }
 
 .task-button {
@@ -231,6 +255,7 @@ button {
 .chart-panel,
 .chart-summary article,
 .stats-strip article {
+  min-width: 0;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -358,6 +383,18 @@ select:focus {
   font-size: 18px;
 }
 
+.table-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.table-actions select {
+  width: 150px;
+}
+
 #search-box {
   width: min(260px, 45vw);
 }
@@ -459,6 +496,10 @@ th:nth-child(10) {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+}
+
+.charts-grid > * {
+  min-width: 0;
 }
 
 .chart-panel {
@@ -602,12 +643,14 @@ th:nth-child(10) {
   .main-container {
     height: auto;
     min-height: calc(100vh - 78px);
-    overflow: visible;
+    overflow-x: hidden;
+    overflow-y: visible;
   }
 
   .ribbon {
     grid-template-columns: 1fr;
-    gap: 8px;
+    gap: 6px;
+    padding: 8px;
   }
 
   .ribbon-group {
@@ -616,11 +659,16 @@ th:nth-child(10) {
     border-right: 0;
     border-bottom: 1px solid var(--line);
     padding-right: 0;
-    padding-bottom: 8px;
+    gap: 6px;
+    padding-bottom: 6px;
   }
 
-  .ribbon-group:not(.tasks-ribbon) {
+  .file-ribbon {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .utils-ribbon {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .ribbon-title {
@@ -630,6 +678,23 @@ th:nth-child(10) {
   .tool-button,
   .task-button {
     width: 100%;
+    min-height: 32px;
+    padding: 5px 8px;
+    font-size: 12px;
+  }
+
+  .tasks-ribbon {
+    grid-template-columns: 1fr;
+  }
+
+  .task-buttons {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .new-task {
+    grid-template-columns: minmax(0, 1fr) 42px;
   }
 
   .view {
@@ -650,10 +715,13 @@ th:nth-child(10) {
   .stats-strip,
   .chart-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
   }
 
   .table-wrap {
-    display: none;
+    display: block;
+    max-height: none;
+    overflow-x: hidden;
   }
 
   .table-panel {
@@ -661,9 +729,7 @@ th:nth-child(10) {
   }
 
   .mobile-list {
-    display: grid;
-    gap: 9px;
-    padding: 10px;
+    display: none;
   }
 
   .entry-card {
@@ -713,34 +779,97 @@ th:nth-child(10) {
   }
 
   .ribbon {
-    padding: 8px;
+    padding: 6px;
   }
 
-  .ribbon-group:not(.tasks-ribbon) {
-    grid-template-columns: minmax(0, 1fr);
+  .ribbon-title {
+    display: none;
+  }
+
+  .file-ribbon {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .utils-ribbon,
+  .task-buttons {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .new-task {
+    grid-template-columns: minmax(0, 1fr) 36px;
+  }
+
+  .new-task input {
+    min-height: 30px;
+    padding: 5px 7px;
+    font-size: 12px;
+  }
+
+  .new-task .tool-button {
+    padding: 5px;
+    font-size: 16px;
   }
 
   .form-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
   }
 
   label.wide {
-    grid-column: auto;
+    grid-column: 1 / -1;
+  }
+
+  .entry-panel {
+    padding: 8px;
+  }
+
+  label {
+    gap: 3px;
+    font-size: 11px;
+  }
+
+  input,
+  select {
+    min-height: 32px;
+    padding: 5px 7px;
+    border-radius: 6px;
+    font-size: 13px;
   }
 
   .form-actions {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    margin-top: 8px;
+  }
+
+  .form-actions .btn,
+  .form-actions .ghost {
+    min-height: 34px;
+    padding: 5px 7px;
+    font-size: 13px;
   }
 
   .stats-strip,
   .chart-summary {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .stats-strip article,
   .chart-summary article {
-    min-height: 64px;
+    min-height: 54px;
+    padding: 8px;
+  }
+
+  .stats-strip span,
+  .chart-summary span {
+    font-size: 10px;
+  }
+
+  .stats-strip strong,
+  .chart-summary strong {
+    margin-top: 4px;
+    font-size: 18px;
   }
 
   #search-box {
@@ -750,6 +879,60 @@ th:nth-child(10) {
   .section-head {
     align-items: stretch;
     flex-direction: column;
+    gap: 8px;
+    padding: 9px;
+  }
+
+  .section-head h1 {
+    font-size: 16px;
+  }
+
+  .table-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .table-actions select,
+  #search-box {
+    width: 100%;
+  }
+
+  table {
+    table-layout: fixed;
+  }
+
+  th,
+  td {
+    padding: 4px 4px;
+    font-size: 11px;
+  }
+
+  th:nth-child(3),
+  td:nth-child(3),
+  th:nth-child(4),
+  td:nth-child(4),
+  th:nth-child(5),
+  td:nth-child(5),
+  th:nth-child(6),
+  td:nth-child(6),
+  th:nth-child(8),
+  td:nth-child(8),
+  th:nth-child(10),
+  td:nth-child(10) {
+    display: none;
+  }
+
+  th:nth-child(1) {
+    width: 82px;
+  }
+
+  th:nth-child(2) {
+    width: auto;
+  }
+
+  th:nth-child(7),
+  th:nth-child(9) {
+    width: 58px;
   }
 
   .summary-row {

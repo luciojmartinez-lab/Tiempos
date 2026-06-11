@@ -1,4 +1,4 @@
-const CACHE_NAME = "tiempos-pwa-100v1";
+const CACHE_NAME = "tiempos-pwa-100v2";
 const APP_SHELL = [
   "/",
   "/index.html",

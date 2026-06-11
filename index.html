@@ -26,7 +26,7 @@
             ><span class="live-indicator"></span> Control de trabajo</span
           >
         </div>
-        <span class="version-badge">100v1</span>
+        <span class="version-badge">100v2</span>
       </div>
       <nav class="navbar-row-menu" aria-label="Hojas">
         <button class="nav-item active" type="button" data-view="datos">
@@ -40,10 +40,10 @@
 
     <main class="main-container">
       <section class="ribbon" aria-label="Acciones rapidas">
-        <div class="ribbon-group">
+        <div class="ribbon-group file-ribbon">
           <span class="ribbon-title">Archivo</span>
           <button class="tool-button" type="button" id="load-file">
-            Cargar archivo
+            Cargar
           </button>
           <button class="tool-button" type="button" id="export-csv">
             CSV
@@ -52,7 +52,7 @@
             Backup
           </button>
         </div>
-        <div class="ribbon-group">
+        <div class="ribbon-group utils-ribbon">
           <span class="ribbon-title">Utiles</span>
           <button class="tool-button" type="button" id="today-button">
             Fecha dia
@@ -66,6 +66,17 @@
         </div>
         <div class="ribbon-group tasks-ribbon">
           <span class="ribbon-title">Tareas</span>
+          <div class="new-task">
+            <input
+              type="text"
+              id="new-task-input"
+              placeholder="Nueva tarea"
+              aria-label="Nueva tarea"
+            />
+            <button class="tool-button" type="button" id="add-task">
+              +
+            </button>
+          </div>
           <div class="task-buttons" id="task-buttons"></div>
         </div>
       </section>
@@ -135,12 +146,18 @@
         <section class="table-panel">
           <div class="section-head">
             <h1>Datos</h1>
-            <input
-              type="search"
-              id="search-box"
-              placeholder="Filtrar"
-              aria-label="Filtrar registros"
-            />
+            <div class="table-actions">
+              <select id="sort-order" aria-label="Ordenar registros">
+                <option value="desc">Nuevo a viejo</option>
+                <option value="asc">Viejo a nuevo</option>
+              </select>
+              <input
+                type="search"
+                id="search-box"
+                placeholder="Filtrar"
+                aria-label="Filtrar registros"
+              />
+            </div>
           </div>
           <div class="table-wrap">
             <table>
