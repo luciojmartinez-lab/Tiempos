@@ -1,9 +1,9 @@
-const CACHE_NAME = "tiempos-pwa-100v6";
+const CACHE_NAME = "tiempos-pwa-100v7";
 const APP_SHELL = [
   "/",
   "/index.html",
-  "/styles.css?v=100v6",
-  "/app.js?v=100v6",
+  "/styles.css?v=100v7",
+  "/app.js?v=100v7",
   "/manifest.json",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
@@ -31,6 +31,12 @@ self.addEventListener("activate", (event) => {
       )
       .then(() => self.clients.claim()),
   );
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener("fetch", (event) => {
