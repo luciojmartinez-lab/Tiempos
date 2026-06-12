@@ -3,7 +3,7 @@ const CUSTOM_TASKS_KEY = "tiempos.customTasks.100v2";
 const DELETED_TASKS_KEY = "tiempos.deletedTasks.100v3";
 const DELETED_ENTRIES_KEY = "tiempos.deletedEntries.100v11";
 const SYNC_SETTINGS_KEY = "tiempos.syncSettings.100v11";
-const APP_VERSION = "100v14";
+const APP_VERSION = "100v15";
 const ALL_YEARS_VALUE = "all";
 const SYNC_ENDPOINT = "/api/sync";
 const BULK_MIGRATION_LIMIT = 5;
@@ -135,6 +135,7 @@ function bindElements() {
     syncKey: document.getElementById("sync-key"),
     saveSyncKey: document.getElementById("save-sync-key"),
     syncNow: document.getElementById("sync-now"),
+    syncPull: document.getElementById("sync-pull"),
     syncReplace: document.getElementById("sync-replace"),
     syncAuto: document.getElementById("sync-auto"),
     syncStatus: document.getElementById("sync-status"),
@@ -225,6 +226,7 @@ function bindEvents() {
   els.deleteTask.addEventListener("click", deleteSelectedTask);
   els.saveSyncKey.addEventListener("click", saveSyncSettingsFromForm);
   els.syncNow.addEventListener("click", () => syncNow({ silent: false }));
+  els.syncPull.addEventListener("click", pullCloudToThisDevice);
   els.syncReplace.addEventListener("click", replaceCloudFromThisDevice);
   els.syncAuto.addEventListener("change", () => {
     state.sync.auto = els.syncAuto.checked;
@@ -380,6 +382,14 @@ async function replaceCloudFromThisDevice() {
   await runSync({ mode: "replace", silent: false });
 }
 
+async function pullCloudToThisDevice() {
+  const confirmed = window.confirm(
+    "Esto sustituira los datos de este dispositivo por la copia de la nube.",
+  );
+  if (!confirmed) return;
+  await runSync({ mode: "pull", silent: false });
+}
+
 async function runSync({ mode, silent }) {
   state.sync.key = cleanText(els.syncKey.value || state.sync.key);
   state.sync.auto = els.syncAuto.checked;
@@ -399,10 +409,11 @@ async function runSync({ mode, silent }) {
   syncInProgress = true;
   if (!silent) {
     updateSyncStatus(
-      mode === "replace" ? "Subiendo copia de este dispositivo..." : "Sincronizando...",
+      syncProgressMessage(mode),
     );
   }
   els.syncNow.disabled = true;
+  els.syncPull.disabled = true;
   els.syncReplace.disabled = true;
 
   try {
@@ -427,6 +438,8 @@ async function runSync({ mode, silent }) {
     updateSyncStatus(
       mode === "replace"
         ? `Nube sustituida: ${state.entries.length} registros`
+        : mode === "pull"
+          ? `Nube descargada: ${state.entries.length} registros`
         : `Sincronizado: ${state.entries.length} registros`,
       "ok",
     );
@@ -435,8 +448,15 @@ async function runSync({ mode, silent }) {
   } finally {
     syncInProgress = false;
     els.syncNow.disabled = false;
+    els.syncPull.disabled = false;
     els.syncReplace.disabled = false;
   }
+}
+
+function syncProgressMessage(mode) {
+  if (mode === "replace") return "Subiendo copia de este dispositivo...";
+  if (mode === "pull") return "Descargando nube...";
+  return "Sincronizando...";
 }
 
 function buildSyncPayload(mode = "merge") {

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { getStore } from "@netlify/blobs";
 
 const STORE_NAME = "tiempos-sync";
-const SYNC_VERSION = "100v14";
+const SYNC_VERSION = "100v15";
 const BULK_MIGRATION_LIMIT = 5;
 const LEGACY_UPDATED_AT = "2000-01-01T00:00:00.000Z";
 
@@ -23,6 +23,10 @@ export default async (req) => {
     const key = `keys/${hashKey(syncKey)}.json`;
     const remote = repairStore((await store.get(key, { type: "json" })) || emptyStore());
     const mode = cleanText(payload.mode) || "merge";
+    if (mode === "pull") {
+      return jsonResponse({ ...remote, syncedAt: new Date().toISOString() });
+    }
+
     const merged =
       mode === "replace" || shouldUseCloudOnly(remote, payload)
         ? mode === "replace"
