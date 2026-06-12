@@ -1,7 +1,7 @@
 const STORAGE_KEY = "tiempos.entries.100v1";
 const CUSTOM_TASKS_KEY = "tiempos.customTasks.100v2";
 const DELETED_TASKS_KEY = "tiempos.deletedTasks.100v3";
-const APP_VERSION = "100v8";
+const APP_VERSION = "100v9";
 
 const TASKS = [
   "UNI",
@@ -321,7 +321,8 @@ function isMobileLayout() {
 
 function setInitialView() {
   const requested = new URLSearchParams(window.location.search).get("view");
-  setView(requested === "graficos" ? "graficos" : "datos");
+  const allowedViews = new Set(["datos", "graficos", "configuracion"]);
+  setView(allowedViews.has(requested) ? requested : "datos");
 }
 
 function registerServiceWorker() {

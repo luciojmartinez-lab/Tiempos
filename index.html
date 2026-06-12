@@ -10,12 +10,12 @@
     <meta name="apple-mobile-web-app-title" content="Tiempos" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
-    <link rel="stylesheet" href="/styles.css?v=100v8" />
+    <link rel="stylesheet" href="/styles.css?v=100v9" />
     <script
       defer
       src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"
     ></script>
-    <script defer src="/app.js?v=100v8"></script>
+    <script defer src="/app.js?v=100v9"></script>
   </head>
   <body>
     <header class="top-navbar">
@@ -26,7 +26,7 @@
             ><span class="live-indicator"></span> Control de trabajo</span
           >
         </div>
-        <span class="version-badge">100v8</span>
+        <span class="version-badge">100v9</span>
       </div>
       <nav class="navbar-row-menu" aria-label="Hojas">
         <button class="nav-item active" type="button" data-view="datos">
@@ -34,6 +34,9 @@
         </button>
         <button class="nav-item" type="button" data-view="graficos">
           Graficos
+        </button>
+        <button class="nav-item" type="button" data-view="configuracion">
+          Config.
         </button>
       </nav>
     </header>
@@ -52,34 +55,28 @@
             Backup
           </button>
         </div>
-        <div class="ribbon-group tasks-ribbon">
-          <span class="ribbon-title">Tareas</span>
-          <div class="new-task">
-            <input
-              type="text"
-              id="new-task-input"
-              placeholder="Nueva tarea"
-              aria-label="Nueva tarea"
-            />
-            <button class="tool-button" type="button" id="add-task">
-              +
-            </button>
-            <button
-              class="tool-button danger-tool"
-              type="button"
-              id="delete-task"
-              aria-label="Eliminar tarea seleccionada"
-              title="Eliminar tarea seleccionada"
-              hidden
-            >
-              -
-            </button>
-          </div>
-          <div class="task-buttons" id="task-buttons"></div>
-        </div>
       </section>
 
       <section class="view active" id="datos-view" data-screen="datos">
+        <section class="stats-strip" aria-label="Resumen">
+          <article>
+            <span>Media diaria</span>
+            <strong id="stat-average">0:00</strong>
+          </article>
+          <article>
+            <span>Total horas</span>
+            <strong id="stat-total">0:00</strong>
+          </article>
+          <article>
+            <span>Total dias</span>
+            <strong id="stat-days">0</strong>
+          </article>
+          <article>
+            <span>Registros</span>
+            <strong id="stat-entries">0</strong>
+          </article>
+        </section>
+
         <button
           class="open-entry-button"
           type="button"
@@ -136,25 +133,6 @@
           </form>
         </section>
 
-        <section class="stats-strip" aria-label="Resumen">
-          <article>
-            <span>Media diaria</span>
-            <strong id="stat-average">0:00</strong>
-          </article>
-          <article>
-            <span>Total horas</span>
-            <strong id="stat-total">0:00</strong>
-          </article>
-          <article>
-            <span>Total dias</span>
-            <strong id="stat-days">0</strong>
-          </article>
-          <article>
-            <span>Registros</span>
-            <strong id="stat-entries">0</strong>
-          </article>
-        </section>
-
         <section class="table-panel">
           <div class="section-head">
             <h1>Datos</h1>
@@ -207,6 +185,39 @@
             </table>
           </div>
           <div class="mobile-list" id="mobile-list"></div>
+        </section>
+      </section>
+
+      <section class="view" id="configuracion-view" data-screen="configuracion">
+        <section class="config-panel">
+          <div class="section-head">
+            <h1>Configuracion</h1>
+          </div>
+          <div class="config-block">
+            <span class="ribbon-title">Tareas</span>
+            <div class="new-task">
+              <input
+                type="text"
+                id="new-task-input"
+                placeholder="Nueva tarea"
+                aria-label="Nueva tarea"
+              />
+              <button class="tool-button" type="button" id="add-task">
+                +
+              </button>
+              <button
+                class="tool-button danger-tool"
+                type="button"
+                id="delete-task"
+                aria-label="Eliminar tarea seleccionada"
+                title="Eliminar tarea seleccionada"
+                hidden
+              >
+                -
+              </button>
+            </div>
+            <div class="task-buttons" id="task-buttons"></div>
+          </div>
         </section>
       </section>
 
