@@ -2,6 +2,9 @@ import { createHash } from "node:crypto";
 import { getStore } from "@netlify/blobs";
 
 const STORE_NAME = "tiempos-sync";
+const SYNC_VERSION = "100v12";
+const BULK_MIGRATION_LIMIT = 5;
+const LEGACY_UPDATED_AT = "2000-01-01T00:00:00.000Z";
 
 export default async (req) => {
   if (req.method === "OPTIONS") return jsonResponse({});
@@ -22,9 +25,7 @@ export default async (req) => {
     const merged = mergeStores(remote, payload);
     merged.updatedAt = new Date().toISOString();
 
-    await store.setJSON(key, merged, {
-      metadata: { updatedAt: merged.updatedAt },
-    });
+    await store.setJSON(key, merged);
 
     return jsonResponse({ ...merged, syncedAt: merged.updatedAt });
   } catch (error) {
@@ -41,6 +42,8 @@ export const config = {
 };
 
 function mergeStores(remote, incoming) {
+  const remoteEntries = repairLegacyMigrationEntries(remote.entries || []);
+  const incomingEntries = repairLegacyMigrationEntries(incoming.entries || []);
   const merged = {
     entries: [],
     deletedEntries: [],
@@ -56,8 +59,8 @@ function mergeStores(remote, incoming) {
   };
 
   const records = new Map();
-  addRecords(records, remote.entries || [], false);
-  addRecords(records, incoming.entries || [], false);
+  addRecords(records, remoteEntries, false);
+  addRecords(records, incomingEntries, false);
   addRecords(records, remote.deletedEntries || [], true);
   addRecords(records, incoming.deletedEntries || [], true);
 
@@ -82,7 +85,7 @@ function addRecords(records, list, deleted) {
     const previous = records.get(value.id);
     const nextDate = getRecordDate(value);
     const previousDate = previous ? getRecordDate(previous.value) : "";
-    if (!previous || compareDate(nextDate, previousDate) >= 0) {
+    if (!previous || compareDate(nextDate, previousDate) > 0) {
       records.set(value.id, { deleted, value });
     }
   });
@@ -100,6 +103,7 @@ function normalizeEntry(entry) {
     end: cleanText(entry.end),
     createdAt: cleanText(entry.createdAt) || updatedAt,
     updatedAt,
+    syncVersion: cleanText(entry.syncVersion),
   };
 }
 
@@ -115,6 +119,39 @@ function normalizeTombstone(item) {
 
 function getRecordDate(record) {
   return cleanText(record.updatedAt || record.deletedAt || record.createdAt);
+}
+
+function repairLegacyMigrationEntries(entries) {
+  const normalized = entries.map(normalizeEntry);
+  const bulkStamps = new Map();
+
+  normalized.forEach((entry) => {
+    if (!isBulkMigrationCandidate(entry)) return;
+    bulkStamps.set(entry.updatedAt, (bulkStamps.get(entry.updatedAt) || 0) + 1);
+  });
+
+  return normalized.map((entry) => {
+    if (
+      isBulkMigrationCandidate(entry) &&
+      (bulkStamps.get(entry.updatedAt) || 0) >= BULK_MIGRATION_LIMIT
+    ) {
+      return {
+        ...entry,
+        createdAt: LEGACY_UPDATED_AT,
+        updatedAt: LEGACY_UPDATED_AT,
+        syncVersion: SYNC_VERSION,
+      };
+    }
+    return { ...entry, syncVersion: entry.syncVersion || SYNC_VERSION };
+  });
+}
+
+function isBulkMigrationCandidate(entry) {
+  return (
+    !entry.syncVersion &&
+    Boolean(entry.createdAt) &&
+    entry.createdAt === entry.updatedAt
+  );
 }
 
 function compareEntries(a, b) {

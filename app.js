@@ -3,9 +3,11 @@ const CUSTOM_TASKS_KEY = "tiempos.customTasks.100v2";
 const DELETED_TASKS_KEY = "tiempos.deletedTasks.100v3";
 const DELETED_ENTRIES_KEY = "tiempos.deletedEntries.100v11";
 const SYNC_SETTINGS_KEY = "tiempos.syncSettings.100v11";
-const APP_VERSION = "100v11";
+const APP_VERSION = "100v12";
 const ALL_YEARS_VALUE = "all";
 const SYNC_ENDPOINT = "/api/sync";
+const BULK_MIGRATION_LIMIT = 5;
+const LEGACY_UPDATED_AT = "2000-01-01T00:00:00.000Z";
 
 const TASKS = [
   "UNI",
@@ -428,8 +430,7 @@ function buildSyncPayload() {
 
 function applySyncedData(data) {
   const deletedIds = new Set((data.deletedEntries || []).map((item) => item.id));
-  state.entries = (data.entries || [])
-    .map(normalizeEntry)
+  state.entries = repairLegacyMigrationEntries(data.entries || [])
     .filter((entry) => entry.id && !deletedIds.has(entry.id))
     .sort(compareEntries);
   state.deletedEntries = (data.deletedEntries || [])
@@ -441,7 +442,11 @@ function applySyncedData(data) {
 }
 
 function uniqueTasks(tasks) {
-  return [...new Set(tasks.map((task) => cleanText(task).toUpperCase()).filter(Boolean))];
+  return [
+    ...new Set(
+      tasks.map((task) => cleanText(task).toUpperCase()).filter(Boolean),
+    ),
+  ];
 }
 
 function startNewEntryFromButton() {
@@ -560,6 +565,7 @@ function saveCurrent(event) {
     end: els.end.value,
     createdAt: previous?.createdAt || savedAt,
     updatedAt: savedAt,
+    syncVersion: APP_VERSION,
   };
 
   if (state.editingId) {
@@ -1023,6 +1029,7 @@ function normalizeEntry(entry, fallbackDate = new Date().toISOString()) {
     end: parseTime(entry.end || entry["TIEMPO FINAL"] || entry.final),
     createdAt: entry.createdAt || updatedAt,
     updatedAt,
+    syncVersion: cleanText(entry.syncVersion),
   };
 }
 
@@ -1044,13 +1051,44 @@ function upsertTombstone(list, tombstone) {
   ];
 }
 
+function repairLegacyMigrationEntries(entries) {
+  const normalized = entries.map((entry) => normalizeEntry(entry));
+  const bulkStamps = new Map();
+
+  normalized.forEach((entry) => {
+    if (!isBulkMigrationCandidate(entry)) return;
+    bulkStamps.set(entry.updatedAt, (bulkStamps.get(entry.updatedAt) || 0) + 1);
+  });
+
+  return normalized.map((entry) => {
+    if (
+      isBulkMigrationCandidate(entry) &&
+      (bulkStamps.get(entry.updatedAt) || 0) >= BULK_MIGRATION_LIMIT
+    ) {
+      return {
+        ...entry,
+        createdAt: LEGACY_UPDATED_AT,
+        updatedAt: LEGACY_UPDATED_AT,
+        syncVersion: APP_VERSION,
+      };
+    }
+    return { ...entry, syncVersion: entry.syncVersion || APP_VERSION };
+  });
+}
+
+function isBulkMigrationCandidate(entry) {
+  return (
+    !entry.syncVersion &&
+    Boolean(entry.createdAt) &&
+    entry.createdAt === entry.updatedAt
+  );
+}
+
 function loadEntries() {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
-      const migratedAt = new Date().toISOString();
-      const entries = JSON.parse(saved)
-        .map((entry) => normalizeEntry(entry, migratedAt))
+      const entries = repairLegacyMigrationEntries(JSON.parse(saved))
         .filter((entry) => entry.date && entry.task);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
       return entries;
@@ -1058,8 +1096,7 @@ function loadEntries() {
   } catch {
     localStorage.removeItem(STORAGE_KEY);
   }
-  const migratedAt = new Date().toISOString();
-  return SAMPLE_ENTRIES.map((entry) => normalizeEntry(entry, migratedAt));
+  return repairLegacyMigrationEntries(SAMPLE_ENTRIES);
 }
 
 function loadCustomTasks() {
