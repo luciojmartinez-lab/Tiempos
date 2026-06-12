@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { getStore } from "@netlify/blobs";
 
 const STORE_NAME = "tiempos-sync";
-const SYNC_VERSION = "100v12";
+const SYNC_VERSION = "100v13";
 const BULK_MIGRATION_LIMIT = 5;
 const LEGACY_UPDATED_AT = "2000-01-01T00:00:00.000Z";
 
@@ -21,9 +21,16 @@ export default async (req) => {
 
     const store = getStore({ name: STORE_NAME, consistency: "strong" });
     const key = `keys/${hashKey(syncKey)}.json`;
-    const remote = (await store.get(key, { type: "json" })) || emptyStore();
-    const merged = mergeStores(remote, payload);
+    const remote = repairStore((await store.get(key, { type: "json" })) || emptyStore());
+    const mode = cleanText(payload.mode) || "merge";
+    const merged =
+      mode === "replace" || shouldUseCloudOnly(remote, payload)
+        ? mode === "replace"
+          ? replaceStore(payload)
+          : remote
+        : mergeStores(remote, payload);
     merged.updatedAt = new Date().toISOString();
+    if (mode === "replace") merged.resetAt = merged.updatedAt;
 
     await store.setJSON(key, merged);
 
@@ -42,7 +49,7 @@ export const config = {
 };
 
 function mergeStores(remote, incoming) {
-  const remoteEntries = repairLegacyMigrationEntries(remote.entries || []);
+  remote = repairStore(remote);
   const incomingEntries = repairLegacyMigrationEntries(incoming.entries || []);
   const merged = {
     entries: [],
@@ -56,10 +63,11 @@ function mergeStores(remote, incoming) {
       ...(incoming.deletedTasks || []),
     ]),
     updatedAt: remote.updatedAt || "",
+    resetAt: remote.resetAt || "",
   };
 
   const records = new Map();
-  addRecords(records, remoteEntries, false);
+  addRecords(records, remote.entries || [], false);
   addRecords(records, incomingEntries, false);
   addRecords(records, remote.deletedEntries || [], true);
   addRecords(records, incoming.deletedEntries || [], true);
@@ -75,6 +83,48 @@ function mergeStores(remote, incoming) {
   merged.entries.sort(compareEntries);
   merged.deletedEntries.sort((a, b) => compareDate(a.updatedAt, b.updatedAt));
   return merged;
+}
+
+function replaceStore(incoming) {
+  const deletedIds = new Set(
+    (incoming.deletedEntries || []).map((item) => cleanText(item.id)),
+  );
+  return {
+    entries: repairLegacyMigrationEntries(incoming.entries || [])
+      .filter((entry) => entry.id && !deletedIds.has(entry.id))
+      .sort(compareEntries),
+    deletedEntries: (incoming.deletedEntries || [])
+      .map(normalizeTombstone)
+      .filter((item) => item.id),
+    customTasks: uniqueTasks(incoming.customTasks || []),
+    deletedTasks: uniqueTasks(incoming.deletedTasks || []),
+    updatedAt: "",
+    resetAt: "",
+  };
+}
+
+function repairStore(store) {
+  const deletedIds = new Set(
+    (store.deletedEntries || []).map((item) => cleanText(item.id)),
+  );
+  return {
+    entries: repairLegacyMigrationEntries(store.entries || [])
+      .filter((entry) => entry.id && !deletedIds.has(entry.id))
+      .sort(compareEntries),
+    deletedEntries: (store.deletedEntries || [])
+      .map(normalizeTombstone)
+      .filter((item) => item.id),
+    customTasks: uniqueTasks(store.customTasks || []),
+    deletedTasks: uniqueTasks(store.deletedTasks || []),
+    updatedAt: cleanText(store.updatedAt),
+    resetAt: cleanText(store.resetAt),
+  };
+}
+
+function shouldUseCloudOnly(remote, incoming) {
+  if (!remote.resetAt) return false;
+  const clientLastSyncedAt = cleanText(incoming.clientLastSyncedAt);
+  return !clientLastSyncedAt || compareDate(clientLastSyncedAt, remote.resetAt) < 0;
 }
 
 function addRecords(records, list, deleted) {

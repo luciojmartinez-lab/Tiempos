@@ -602,7 +602,7 @@ th:nth-child(10) {
 
 .sync-grid {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) auto auto auto;
+  grid-template-columns: minmax(220px, 1fr) auto auto auto auto;
   align-items: end;
   gap: 8px;
 }
@@ -1026,6 +1026,11 @@ th:nth-child(10) {
 
   .sync-toggle {
     justify-content: center;
+  }
+
+  .sync-replace,
+  .sync-toggle {
+    grid-column: 1 / -1;
   }
 
   .ribbon-title {

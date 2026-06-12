@@ -3,7 +3,7 @@ const CUSTOM_TASKS_KEY = "tiempos.customTasks.100v2";
 const DELETED_TASKS_KEY = "tiempos.deletedTasks.100v3";
 const DELETED_ENTRIES_KEY = "tiempos.deletedEntries.100v11";
 const SYNC_SETTINGS_KEY = "tiempos.syncSettings.100v11";
-const APP_VERSION = "100v12";
+const APP_VERSION = "100v13";
 const ALL_YEARS_VALUE = "all";
 const SYNC_ENDPOINT = "/api/sync";
 const BULK_MIGRATION_LIMIT = 5;
@@ -135,6 +135,7 @@ function bindElements() {
     syncKey: document.getElementById("sync-key"),
     saveSyncKey: document.getElementById("save-sync-key"),
     syncNow: document.getElementById("sync-now"),
+    syncReplace: document.getElementById("sync-replace"),
     syncAuto: document.getElementById("sync-auto"),
     syncStatus: document.getElementById("sync-status"),
     entryPanel: document.querySelector(".entry-panel"),
@@ -224,6 +225,7 @@ function bindEvents() {
   els.deleteTask.addEventListener("click", deleteSelectedTask);
   els.saveSyncKey.addEventListener("click", saveSyncSettingsFromForm);
   els.syncNow.addEventListener("click", () => syncNow({ silent: false }));
+  els.syncReplace.addEventListener("click", replaceCloudFromThisDevice);
   els.syncAuto.addEventListener("change", () => {
     state.sync.auto = els.syncAuto.checked;
     saveSyncSettings();
@@ -367,6 +369,18 @@ function scheduleAutoSync(delay = 0) {
 }
 
 async function syncNow({ silent } = { silent: false }) {
+  return runSync({ mode: "merge", silent });
+}
+
+async function replaceCloudFromThisDevice() {
+  const confirmed = window.confirm(
+    "Esto sustituira la nube por los datos de este dispositivo. Usalo solo en el dispositivo que tenga la version correcta.",
+  );
+  if (!confirmed) return;
+  await runSync({ mode: "replace", silent: false });
+}
+
+async function runSync({ mode, silent }) {
   state.sync.key = cleanText(els.syncKey.value || state.sync.key);
   state.sync.auto = els.syncAuto.checked;
   saveSyncSettings();
@@ -383,14 +397,19 @@ async function syncNow({ silent } = { silent: false }) {
 
   if (syncInProgress) return;
   syncInProgress = true;
-  if (!silent) updateSyncStatus("Sincronizando...");
+  if (!silent) {
+    updateSyncStatus(
+      mode === "replace" ? "Subiendo copia de este dispositivo..." : "Sincronizando...",
+    );
+  }
   els.syncNow.disabled = true;
+  els.syncReplace.disabled = true;
 
   try {
     const response = await fetch(SYNC_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(buildSyncPayload()),
+      body: JSON.stringify(buildSyncPayload(mode)),
     });
 
     const data = await response.json().catch(() => ({}));
@@ -406,7 +425,9 @@ async function syncNow({ silent } = { silent: false }) {
     resetForm();
     render();
     updateSyncStatus(
-      `Sincronizado: ${state.entries.length} registros`,
+      mode === "replace"
+        ? `Nube sustituida: ${state.entries.length} registros`
+        : `Sincronizado: ${state.entries.length} registros`,
       "ok",
     );
   } catch (error) {
@@ -414,13 +435,16 @@ async function syncNow({ silent } = { silent: false }) {
   } finally {
     syncInProgress = false;
     els.syncNow.disabled = false;
+    els.syncReplace.disabled = false;
   }
 }
 
-function buildSyncPayload() {
+function buildSyncPayload(mode = "merge") {
   return {
     syncKey: state.sync.key,
+    mode,
     version: APP_VERSION,
+    clientLastSyncedAt: state.sync.lastSyncedAt || "",
     entries: state.entries.map(normalizeEntry),
     deletedEntries: state.deletedEntries.map(normalizeTombstone),
     customTasks: state.customTasks,
