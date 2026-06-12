@@ -1275,7 +1275,7 @@ th:nth-child(10) {
 
   .table-actions {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 
   .table-actions select,
@@ -1287,37 +1287,37 @@ th:nth-child(10) {
   }
 
   #sort-order,
-  #search-box,
   .clear-date-filter {
     grid-column: 1 / -1;
   }
 
   #sort-order {
+    grid-column: 1 / 4;
     order: 0;
   }
 
-  .date-filter-field {
+  #search-box {
+    grid-column: 4 / 7;
     order: 1;
   }
 
-  #month-filter {
+  .date-filter-field {
+    grid-column: 1 / 3;
     order: 2;
   }
 
-  #year-filter {
+  #month-filter {
+    grid-column: 3 / 5;
     order: 3;
   }
 
-  .clear-date-filter {
+  #year-filter {
+    grid-column: 5 / 7;
     order: 4;
   }
 
-  #search-box {
+  .clear-date-filter {
     order: 5;
-  }
-
-  #search-box {
-    grid-column: 1 / -1;
   }
 
   .clear-date-filter {
