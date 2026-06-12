@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { getStore } from "@netlify/blobs";
 
 const STORE_NAME = "tiempos-sync";
-const SYNC_VERSION = "100v15";
+const SYNC_VERSION = "100v16";
 const BULK_MIGRATION_LIMIT = 5;
 const LEGACY_UPDATED_AT = "2000-01-01T00:00:00.000Z";
 
@@ -20,11 +20,15 @@ export default async (req) => {
     }
 
     const store = getStore({ name: STORE_NAME, consistency: "strong" });
-    const key = `keys/${hashKey(syncKey)}.json`;
+    const keyId = hashKey(syncKey);
+    const key = `keys/${keyId}.json`;
     const remote = repairStore((await store.get(key, { type: "json" })) || emptyStore());
     const mode = cleanText(payload.mode) || "merge";
+    if (mode === "status") {
+      return jsonResponse(withDiagnostics(remote, keyId, new Date().toISOString()));
+    }
     if (mode === "pull") {
-      return jsonResponse({ ...remote, syncedAt: new Date().toISOString() });
+      return jsonResponse(withDiagnostics(remote, keyId, new Date().toISOString()));
     }
 
     const merged =
@@ -38,7 +42,7 @@ export default async (req) => {
 
     await store.setJSON(key, merged);
 
-    return jsonResponse({ ...merged, syncedAt: merged.updatedAt });
+    return jsonResponse(withDiagnostics(merged, keyId, merged.updatedAt));
   } catch (error) {
     return jsonResponse(
       { error: error?.message || "No se pudo sincronizar" },
@@ -140,6 +144,41 @@ function shouldUseCloudOnly(remote, incoming) {
   if (!remote.resetAt) return false;
   const clientLastSyncedAt = cleanText(incoming.clientLastSyncedAt);
   return !clientLastSyncedAt || compareDate(clientLastSyncedAt, remote.resetAt) < 0;
+}
+
+function withDiagnostics(store, keyId, syncedAt) {
+  return {
+    ...store,
+    syncedAt,
+    keyId: keyId.slice(0, 8),
+    cloudSummary: summarizeStore(store),
+  };
+}
+
+function summarizeStore(store) {
+  const latestRows = (store.entries || [])
+    .slice()
+    .sort((a, b) =>
+      `${b.date || ""} ${b.start || ""} ${b.id}`.localeCompare(
+        `${a.date || ""} ${a.start || ""} ${a.id}`,
+      ),
+    )
+    .slice(0, 5)
+    .map((entry) => ({
+      date: entry.date,
+      task: entry.task,
+      start: entry.start,
+      end: entry.end,
+      description: entry.description,
+    }));
+
+  return {
+    entriesCount: (store.entries || []).length,
+    deletedCount: (store.deletedEntries || []).length,
+    updatedAt: store.updatedAt || "",
+    resetAt: store.resetAt || "",
+    latestRows,
+  };
 }
 
 function filterIncomingAfterReset(incomingEntries, remoteEntries, resetAt) {

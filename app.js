@@ -3,7 +3,7 @@ const CUSTOM_TASKS_KEY = "tiempos.customTasks.100v2";
 const DELETED_TASKS_KEY = "tiempos.deletedTasks.100v3";
 const DELETED_ENTRIES_KEY = "tiempos.deletedEntries.100v11";
 const SYNC_SETTINGS_KEY = "tiempos.syncSettings.100v11";
-const APP_VERSION = "100v15";
+const APP_VERSION = "100v16";
 const ALL_YEARS_VALUE = "all";
 const SYNC_ENDPOINT = "/api/sync";
 const BULK_MIGRATION_LIMIT = 5;
@@ -135,6 +135,7 @@ function bindElements() {
     syncKey: document.getElementById("sync-key"),
     saveSyncKey: document.getElementById("save-sync-key"),
     syncNow: document.getElementById("sync-now"),
+    syncCheck: document.getElementById("sync-check"),
     syncPull: document.getElementById("sync-pull"),
     syncReplace: document.getElementById("sync-replace"),
     syncAuto: document.getElementById("sync-auto"),
@@ -226,6 +227,7 @@ function bindEvents() {
   els.deleteTask.addEventListener("click", deleteSelectedTask);
   els.saveSyncKey.addEventListener("click", saveSyncSettingsFromForm);
   els.syncNow.addEventListener("click", () => syncNow({ silent: false }));
+  els.syncCheck.addEventListener("click", checkCloudStatus);
   els.syncPull.addEventListener("click", pullCloudToThisDevice);
   els.syncReplace.addEventListener("click", replaceCloudFromThisDevice);
   els.syncAuto.addEventListener("change", () => {
@@ -390,6 +392,10 @@ async function pullCloudToThisDevice() {
   await runSync({ mode: "pull", silent: false });
 }
 
+async function checkCloudStatus() {
+  await runSync({ mode: "status", silent: false });
+}
+
 async function runSync({ mode, silent }) {
   state.sync.key = cleanText(els.syncKey.value || state.sync.key);
   state.sync.auto = els.syncAuto.checked;
@@ -413,6 +419,7 @@ async function runSync({ mode, silent }) {
     );
   }
   els.syncNow.disabled = true;
+  els.syncCheck.disabled = true;
   els.syncPull.disabled = true;
   els.syncReplace.disabled = true;
 
@@ -426,6 +433,11 @@ async function runSync({ mode, silent }) {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       throw new Error(data.error || "No se pudo sincronizar");
+    }
+
+    if (mode === "status") {
+      updateSyncStatus(cloudSummaryMessage(data), "ok");
+      return;
     }
 
     applySyncedData(data);
@@ -448,6 +460,7 @@ async function runSync({ mode, silent }) {
   } finally {
     syncInProgress = false;
     els.syncNow.disabled = false;
+    els.syncCheck.disabled = false;
     els.syncPull.disabled = false;
     els.syncReplace.disabled = false;
   }
@@ -456,7 +469,23 @@ async function runSync({ mode, silent }) {
 function syncProgressMessage(mode) {
   if (mode === "replace") return "Subiendo copia de este dispositivo...";
   if (mode === "pull") return "Descargando nube...";
+  if (mode === "status") return "Comprobando nube...";
   return "Sincronizando...";
+}
+
+function cloudSummaryMessage(data) {
+  const summary = data.cloudSummary || {};
+  const rows = Array.isArray(summary.latestRows) ? summary.latestRows : [];
+  const latest = rows
+    .slice(0, 2)
+    .map(
+      (row) =>
+        `${formatDate(row.date)} ${row.task || ""} ${row.start || "--"}-${row.end || "--"}`,
+    )
+    .join(" | ");
+  return `Clave ${data.keyId || "-"} · Nube ${summary.entriesCount ?? 0} registros${
+    latest ? ` · ${latest}` : ""
+  }`;
 }
 
 function buildSyncPayload(mode = "merge") {

@@ -1,9 +1,9 @@
-const CACHE_NAME = "tiempos-pwa-100v15";
+const CACHE_NAME = "tiempos-pwa-100v16";
 const APP_SHELL = [
   "/",
   "/index.html",
-  "/styles.css?v=100v15",
-  "/app.js?v=100v15",
+  "/styles.css?v=100v16",
+  "/app.js?v=100v16",
   "/manifest.json",
   "/version.json",
   "/icons/icon-192.png",
