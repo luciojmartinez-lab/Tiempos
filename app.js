@@ -3,7 +3,7 @@ const CUSTOM_TASKS_KEY = "tiempos.customTasks.100v2";
 const DELETED_TASKS_KEY = "tiempos.deletedTasks.100v3";
 const DELETED_ENTRIES_KEY = "tiempos.deletedEntries.100v11";
 const SYNC_SETTINGS_KEY = "tiempos.syncSettings.100v11";
-const APP_VERSION = "100v20";
+const APP_VERSION = "100v21";
 const ALL_YEARS_VALUE = "all";
 const SYNC_ENDPOINT = "/api/sync";
 const BULK_MIGRATION_LIMIT = 5;
@@ -266,7 +266,7 @@ function bindEvents() {
   });
   els.search.addEventListener("input", () => {
     state.search = els.search.value.trim().toLowerCase();
-    renderEntries();
+    renderFilteredData();
   });
   els.dateFilter.addEventListener("change", () => {
     state.dateFilter = els.dateFilter.value;
@@ -277,7 +277,7 @@ function bindEvents() {
       els.monthFilter.value = "";
     }
     updateDateFilterState();
-    renderEntries();
+    renderFilteredData();
   });
   els.yearFilter.addEventListener("change", () => {
     state.yearFilter = els.yearFilter.value;
@@ -286,7 +286,7 @@ function bindEvents() {
       els.dateFilter.value = "";
     }
     updateDateFilterState();
-    renderEntries();
+    renderFilteredData();
   });
   els.monthFilter.addEventListener("change", () => {
     state.monthFilter = els.monthFilter.value;
@@ -295,7 +295,7 @@ function bindEvents() {
       els.dateFilter.value = "";
     }
     updateDateFilterState();
-    renderEntries();
+    renderFilteredData();
   });
   els.clearDateFilter.addEventListener("click", () => {
     state.dateFilter = "";
@@ -305,7 +305,7 @@ function bindEvents() {
     els.yearFilter.value = "";
     els.monthFilter.value = "";
     updateDateFilterState();
-    renderEntries();
+    renderFilteredData();
   });
   els.sortOrder.addEventListener("change", () => {
     state.sortOrder = els.sortOrder.value;
@@ -808,6 +808,11 @@ function render() {
   renderCharts();
 }
 
+function renderFilteredData() {
+  renderStats();
+  renderEntries();
+}
+
 function renderDataFilterOptions() {
   const yearValue = state.yearFilter;
   const monthValue = state.monthFilter;
@@ -833,18 +838,18 @@ function renderDataFilterOptions() {
 }
 
 function renderStats() {
-  const computed = computeRows();
-  const stats = computeStats(computed);
+  const rows = getFilteredRows();
+  const stats = computeStats(rows);
 
   els.statAverage.textContent = minutesToDuration(stats.averageMinutes);
   els.statTotal.textContent = minutesToDuration(stats.totalMinutes);
   els.statDays.textContent = String(stats.spanDays);
-  els.statEntries.textContent = String(state.entries.length);
+  els.statEntries.textContent = String(rows.length);
   els.chartTotal.textContent = minutesToDuration(stats.totalMinutes);
 }
 
 function renderEntries() {
-  const rows = sortRowsForDisplay(computeRows().filter(matchesSearch));
+  const rows = sortRowsForDisplay(getFilteredRows());
 
   els.body.innerHTML = rows
     .map(
@@ -895,6 +900,10 @@ function renderEntries() {
       editEntry(card.dataset.id, { openModal: true }),
     );
   });
+}
+
+function getFilteredRows() {
+  return computeRows().filter(matchesSearch);
 }
 
 function highlightEditingEntry() {
