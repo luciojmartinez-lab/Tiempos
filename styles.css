@@ -294,7 +294,7 @@ body[data-active-view="configuracion"] .ribbon {
 
 .form-grid {
   display: grid;
-  grid-template-columns: 140px 180px minmax(180px, 1fr) minmax(150px, 0.8fr) 120px 120px;
+  grid-template-columns: 140px 180px minmax(180px, 1fr) minmax(150px, 0.8fr) minmax(178px, 190px) minmax(178px, 190px);
   gap: 8px;
 }
 
@@ -325,6 +325,65 @@ input:focus,
 select:focus {
   border-color: var(--primary);
   outline: 3px solid rgba(25, 118, 210, 0.15);
+}
+
+.time-field,
+.sync-key-control {
+  display: grid;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.time-field {
+  grid-template-columns: minmax(0, 1fr) auto 34px;
+}
+
+.sync-key-control {
+  grid-template-columns: minmax(0, 1fr) 38px;
+}
+
+.time-now-button,
+.time-picker-button,
+.sync-eye {
+  min-width: 0;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-soft);
+  color: #1d334f;
+  font-weight: 800;
+}
+
+.time-now-button {
+  padding: 6px 8px;
+}
+
+.time-picker-button,
+.sync-eye {
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+}
+
+.time-picker-button svg,
+.sync-eye svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.time-now-button:hover,
+.time-picker-button:hover,
+.sync-eye:hover,
+.sync-eye.active {
+  border-color: var(--primary);
+  background: var(--blue-soft);
+  color: var(--primary);
 }
 
 .form-actions {
@@ -535,6 +594,11 @@ td.num {
   font-variant-numeric: tabular-nums;
 }
 
+td.daily-cell,
+th:nth-child(9) {
+  font-weight: 800;
+}
+
 th:nth-child(1) {
   width: 92px;
 }
@@ -602,7 +666,7 @@ th:nth-child(10) {
 
 .sync-grid {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) auto auto auto auto auto auto;
+  grid-template-columns: minmax(220px, 1fr) auto auto auto auto;
   align-items: end;
   gap: 8px;
 }
@@ -622,6 +686,35 @@ th:nth-child(10) {
 .sync-toggle input {
   width: 16px;
   min-height: 16px;
+}
+
+.sync-advanced {
+  align-self: end;
+  min-height: 34px;
+}
+
+.sync-advanced summary {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-soft);
+  color: #1d334f;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.sync-advanced-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.sync-advanced[open] {
+  grid-column: 1 / -1;
 }
 
 .sync-status {
@@ -1024,15 +1117,28 @@ th:nth-child(10) {
     grid-column: 1 / -1;
   }
 
+  .sync-key-control {
+    grid-template-columns: minmax(0, 1fr) 36px;
+  }
+
   .sync-toggle {
     justify-content: center;
   }
 
   .sync-check,
-  .sync-pull,
-  .sync-replace,
+  .sync-advanced,
   .sync-toggle {
     grid-column: 1 / -1;
+  }
+
+  .sync-advanced summary {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .sync-advanced-actions {
+    display: grid;
+    grid-template-columns: 1fr;
   }
 
   .ribbon-title {
@@ -1065,6 +1171,23 @@ th:nth-child(10) {
   .form-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 7px;
+  }
+
+  .time-field {
+    grid-template-columns: minmax(0, 1fr) 48px 30px;
+    gap: 4px;
+  }
+
+  .time-now-button,
+  .time-picker-button,
+  .sync-eye {
+    min-height: 32px;
+    border-radius: 6px;
+  }
+
+  .time-now-button {
+    padding: 4px 5px;
+    font-size: 10px;
   }
 
   label.wide {
@@ -1211,11 +1334,23 @@ th:nth-child(10) {
   }
 
   .vertical {
-    grid-template-columns: repeat(6, minmax(35px, 1fr));
-    height: auto;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 3px;
+    height: 170px;
+    overflow: hidden;
   }
 
   .month-bar {
-    min-height: 150px;
+    min-width: 0;
+    min-height: 146px;
+    gap: 3px;
+  }
+
+  .month-bar span {
+    font-size: 9px;
+  }
+
+  .month-bar strong {
+    font-size: 8px;
   }
 }

@@ -10,12 +10,12 @@
     <meta name="apple-mobile-web-app-title" content="Tiempos" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
-    <link rel="stylesheet" href="/styles.css?v=100v16" />
+    <link rel="stylesheet" href="/styles.css?v=100v17" />
     <script
       defer
       src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"
     ></script>
-    <script defer src="/app.js?v=100v16"></script>
+    <script defer src="/app.js?v=100v17"></script>
   </head>
   <body>
     <header class="top-navbar">
@@ -26,7 +26,7 @@
             ><span class="live-indicator"></span> Control de trabajo</span
           >
         </div>
-        <span class="version-badge">100v16</span>
+        <span class="version-badge">100v17</span>
       </div>
       <nav class="navbar-row-menu" aria-label="Hojas">
         <button class="nav-item active" type="button" data-view="datos">
@@ -116,11 +116,53 @@
               </label>
               <label>
                 <span>Tiempo inicio</span>
-                <input type="time" id="entry-start" />
+                <span class="time-field">
+                  <input type="time" id="entry-start" />
+                  <button
+                    class="time-now-button"
+                    type="button"
+                    data-time-now="entry-start"
+                  >
+                    Actual
+                  </button>
+                  <button
+                    class="time-picker-button"
+                    type="button"
+                    data-time-picker="entry-start"
+                    aria-label="Abrir reloj de inicio"
+                    title="Abrir reloj"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M12 7v5l3 2" />
+                      <path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                    </svg>
+                  </button>
+                </span>
               </label>
               <label>
                 <span>Tiempo final</span>
-                <input type="time" id="entry-end" />
+                <span class="time-field">
+                  <input type="time" id="entry-end" />
+                  <button
+                    class="time-now-button"
+                    type="button"
+                    data-time-now="entry-end"
+                  >
+                    Actual
+                  </button>
+                  <button
+                    class="time-picker-button"
+                    type="button"
+                    data-time-picker="entry-end"
+                    aria-label="Abrir reloj final"
+                    title="Abrir reloj"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M12 7v5l3 2" />
+                      <path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                    </svg>
+                  </button>
+                </span>
               </label>
             </div>
             <div class="form-actions">
@@ -197,13 +239,27 @@
             <span class="ribbon-title">Sincronizacion</span>
             <div class="sync-grid">
               <label class="sync-key-field">
-                <span>Clave</span>
-                <input
-                  type="password"
-                  id="sync-key"
-                  autocomplete="off"
-                  placeholder="Clave compartida"
-                />
+                <span>Clave compartida</span>
+                <span class="sync-key-control">
+                  <input
+                    type="password"
+                    id="sync-key"
+                    autocomplete="off"
+                    placeholder="Clave compartida"
+                  />
+                  <button
+                    class="sync-eye"
+                    type="button"
+                    id="toggle-sync-key"
+                    aria-label="Mostrar clave"
+                    title="Mostrar clave"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
+                      <path d="M12 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6Z" />
+                    </svg>
+                  </button>
+                </span>
               </label>
               <button class="tool-button" type="button" id="save-sync-key">
                 Guardar
@@ -214,16 +270,25 @@
               <button class="ghost sync-check" type="button" id="sync-check">
                 Comprobar nube
               </button>
-              <button class="ghost sync-pull" type="button" id="sync-pull">
-                Descargar nube
-              </button>
-              <button class="ghost sync-replace" type="button" id="sync-replace">
-                Subir este dispositivo
-              </button>
               <label class="sync-toggle">
                 <input type="checkbox" id="sync-auto" />
                 <span>Automatico</span>
               </label>
+              <details class="sync-advanced">
+                <summary>Avanzado</summary>
+                <div class="sync-advanced-actions">
+                  <button class="ghost sync-pull" type="button" id="sync-pull">
+                    Descargar nube
+                  </button>
+                  <button
+                    class="ghost sync-replace"
+                    type="button"
+                    id="sync-replace"
+                  >
+                    Subir este dispositivo
+                  </button>
+                </div>
+              </details>
             </div>
             <div class="sync-status" id="sync-status"></div>
           </div>

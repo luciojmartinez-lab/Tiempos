@@ -3,7 +3,7 @@ const CUSTOM_TASKS_KEY = "tiempos.customTasks.100v2";
 const DELETED_TASKS_KEY = "tiempos.deletedTasks.100v3";
 const DELETED_ENTRIES_KEY = "tiempos.deletedEntries.100v11";
 const SYNC_SETTINGS_KEY = "tiempos.syncSettings.100v11";
-const APP_VERSION = "100v16";
+const APP_VERSION = "100v17";
 const ALL_YEARS_VALUE = "all";
 const SYNC_ENDPOINT = "/api/sync";
 const BULK_MIGRATION_LIMIT = 5;
@@ -133,6 +133,7 @@ function bindElements() {
     addTask: document.getElementById("add-task"),
     deleteTask: document.getElementById("delete-task"),
     syncKey: document.getElementById("sync-key"),
+    toggleSyncKey: document.getElementById("toggle-sync-key"),
     saveSyncKey: document.getElementById("save-sync-key"),
     syncNow: document.getElementById("sync-now"),
     syncCheck: document.getElementById("sync-check"),
@@ -151,6 +152,8 @@ function bindElements() {
     notes: document.getElementById("entry-notes"),
     start: document.getElementById("entry-start"),
     end: document.getElementById("entry-end"),
+    timeNowButtons: document.querySelectorAll("[data-time-now]"),
+    timePickerButtons: document.querySelectorAll("[data-time-picker]"),
     save: document.getElementById("save-entry"),
     clear: document.getElementById("clear-form"),
     remove: document.getElementById("delete-entry"),
@@ -225,6 +228,7 @@ function bindEvents() {
   els.task.addEventListener("change", updateTaskButtonState);
   els.addTask.addEventListener("click", addTaskFromInput);
   els.deleteTask.addEventListener("click", deleteSelectedTask);
+  els.toggleSyncKey.addEventListener("click", toggleSyncKeyVisibility);
   els.saveSyncKey.addEventListener("click", saveSyncSettingsFromForm);
   els.syncNow.addEventListener("click", () => syncNow({ silent: false }));
   els.syncCheck.addEventListener("click", checkCloudStatus);
@@ -250,6 +254,12 @@ function bindEvents() {
   els.clear.addEventListener("click", resetForm);
   els.remove.addEventListener("click", deleteCurrent);
   els.form.addEventListener("submit", saveCurrent);
+  els.timeNowButtons.forEach((button) => {
+    button.addEventListener("click", () => setTimeToNow(button.dataset.timeNow));
+  });
+  els.timePickerButtons.forEach((button) => {
+    button.addEventListener("click", () => openTimePicker(button.dataset.timePicker));
+  });
   els.search.addEventListener("input", () => {
     state.search = els.search.value.trim().toLowerCase();
     renderEntries();
@@ -340,10 +350,23 @@ function setSyncFormValues() {
 
 function saveSyncSettingsFromForm() {
   state.sync.key = cleanText(els.syncKey.value);
+  els.syncKey.value = state.sync.key;
   state.sync.auto = els.syncAuto.checked;
   saveSyncSettings();
   updateSyncStatus("Configuracion guardada", "ok");
   scheduleAutoSync(500);
+}
+
+function toggleSyncKeyVisibility() {
+  const isVisible = els.syncKey.type === "text";
+  els.syncKey.type = isVisible ? "password" : "text";
+  els.toggleSyncKey.classList.toggle("active", !isVisible);
+  els.toggleSyncKey.setAttribute(
+    "aria-label",
+    isVisible ? "Mostrar clave" : "Ocultar clave",
+  );
+  els.toggleSyncKey.title = isVisible ? "Mostrar clave" : "Ocultar clave";
+  els.syncKey.focus();
 }
 
 function updateSyncStatus(message, type = "") {
@@ -398,6 +421,7 @@ async function checkCloudStatus() {
 
 async function runSync({ mode, silent }) {
   state.sync.key = cleanText(els.syncKey.value || state.sync.key);
+  els.syncKey.value = state.sync.key;
   state.sync.auto = els.syncAuto.checked;
   saveSyncSettings();
 
@@ -483,9 +507,9 @@ function cloudSummaryMessage(data) {
         `${formatDate(row.date)} ${row.task || ""} ${row.start || "--"}-${row.end || "--"}`,
     )
     .join(" | ");
-  return `Clave ${data.keyId || "-"} · Nube ${summary.entriesCount ?? 0} registros${
-    latest ? ` · ${latest}` : ""
-  }`;
+  return `ID nube ${data.keyId || "-"} - Nube ${
+    summary.entriesCount ?? 0
+  } registros${latest ? ` - ${latest}` : ""}`;
 }
 
 function buildSyncPayload(mode = "merge") {
@@ -710,6 +734,25 @@ function setTodayIfEmpty() {
   updateTaskButtonState();
 }
 
+function setTimeToNow(fieldId) {
+  const field = document.getElementById(fieldId);
+  if (!field) return;
+  field.value = nowTime();
+  field.focus();
+}
+
+function openTimePicker(fieldId) {
+  const field = document.getElementById(fieldId);
+  if (!field) return;
+  field.focus();
+  if (typeof field.showPicker !== "function") return;
+  try {
+    field.showPicker();
+  } catch {
+    // Algunos navegadores solo permiten abrirlo desde interacciones directas.
+  }
+}
+
 function updateTaskButtonState() {
   document.querySelectorAll(".task-button").forEach((button) => {
     button.classList.toggle("active", button.dataset.task === els.task.value);
@@ -755,7 +798,7 @@ function renderEntries() {
         <td class="num">${escapeHtml(row.end)}</td>
         <td class="num">${row.partialMinutes ? minutesToDuration(row.partialMinutes) : ""}</td>
         <td class="num">${row.totalMinutes ? minutesToDuration(row.totalMinutes) : ""}</td>
-        <td class="num">${row.dailyMinutes ? minutesToDuration(row.dailyMinutes) : ""}</td>
+        <td class="num daily-cell">${row.dailyMinutes ? minutesToDuration(row.dailyMinutes) : ""}</td>
         <td class="num">${row.daysWork ?? ""}</td>
       </tr>`,
     )
