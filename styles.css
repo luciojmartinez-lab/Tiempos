@@ -592,8 +592,51 @@ th:nth-child(10) {
   padding: 14px;
 }
 
+.config-block + .config-block {
+  border-top: 1px solid var(--line);
+}
+
 .config-block .new-task {
   max-width: 620px;
+}
+
+.sync-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto auto auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.sync-toggle {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-soft);
+  color: #1d334f;
+}
+
+.sync-toggle input {
+  width: 16px;
+  min-height: 16px;
+}
+
+.sync-status {
+  min-height: 18px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.sync-status.ok {
+  color: var(--accent);
+}
+
+.sync-status.error {
+  color: var(--danger);
 }
 
 .chart-summary {
@@ -971,6 +1014,18 @@ th:nth-child(10) {
 
   .config-block .new-task {
     max-width: 100%;
+  }
+
+  .sync-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .sync-key-field {
+    grid-column: 1 / -1;
+  }
+
+  .sync-toggle {
+    justify-content: center;
   }
 
   .ribbon-title {

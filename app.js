@@ -1,8 +1,11 @@
 const STORAGE_KEY = "tiempos.entries.100v1";
 const CUSTOM_TASKS_KEY = "tiempos.customTasks.100v2";
 const DELETED_TASKS_KEY = "tiempos.deletedTasks.100v3";
-const APP_VERSION = "100v10";
+const DELETED_ENTRIES_KEY = "tiempos.deletedEntries.100v11";
+const SYNC_SETTINGS_KEY = "tiempos.syncSettings.100v11";
+const APP_VERSION = "100v11";
 const ALL_YEARS_VALUE = "all";
+const SYNC_ENDPOINT = "/api/sync";
 
 const TASKS = [
   "UNI",
@@ -91,6 +94,8 @@ const state = {
   entries: loadEntries(),
   customTasks: loadCustomTasks(),
   deletedTasks: loadDeletedTasks(),
+  deletedEntries: loadDeletedEntries(),
+  sync: loadSyncSettings(),
   editingId: null,
   search: "",
   dateFilter: "",
@@ -106,10 +111,13 @@ function init() {
   bindElements();
   buildTaskControls();
   bindEvents();
+  setSyncFormValues();
   setTodayIfEmpty();
   updateDateFilterState();
+  updateSyncStatus();
   render();
   setInitialView();
+  scheduleAutoSync(1000);
   registerServiceWorker();
   checkForAppUpdate();
 }
@@ -122,6 +130,11 @@ function bindElements() {
     newTaskInput: document.getElementById("new-task-input"),
     addTask: document.getElementById("add-task"),
     deleteTask: document.getElementById("delete-task"),
+    syncKey: document.getElementById("sync-key"),
+    saveSyncKey: document.getElementById("save-sync-key"),
+    syncNow: document.getElementById("sync-now"),
+    syncAuto: document.getElementById("sync-auto"),
+    syncStatus: document.getElementById("sync-status"),
     entryPanel: document.querySelector(".entry-panel"),
     openEntry: document.getElementById("open-entry-modal"),
     closeEntry: document.getElementById("close-entry-modal"),
@@ -207,6 +220,14 @@ function bindEvents() {
   els.task.addEventListener("change", updateTaskButtonState);
   els.addTask.addEventListener("click", addTaskFromInput);
   els.deleteTask.addEventListener("click", deleteSelectedTask);
+  els.saveSyncKey.addEventListener("click", saveSyncSettingsFromForm);
+  els.syncNow.addEventListener("click", () => syncNow({ silent: false }));
+  els.syncAuto.addEventListener("change", () => {
+    state.sync.auto = els.syncAuto.checked;
+    saveSyncSettings();
+    updateSyncStatus();
+    scheduleAutoSync(800);
+  });
   els.newTaskInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
@@ -248,6 +269,10 @@ function bindEvents() {
   els.fileInput.addEventListener("change", handleFileLoad);
   els.exportCsv.addEventListener("click", exportCsv);
   els.exportJson.addEventListener("click", exportJson);
+  window.addEventListener("online", () => scheduleAutoSync(500));
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) scheduleAutoSync(500);
+  });
 }
 
 function setView(view) {
@@ -289,7 +314,7 @@ function deleteSelectedTask() {
   }
 
   state.customTasks = state.customTasks.filter((item) => item !== task);
-  if (TASKS.includes(task) && !state.deletedTasks.includes(task)) {
+  if (!state.deletedTasks.includes(task)) {
     state.deletedTasks.push(task);
   }
 
@@ -298,6 +323,125 @@ function deleteSelectedTask() {
   buildTaskControls();
   els.task.value = getTaskList()[0] || "";
   updateTaskButtonState();
+}
+
+function setSyncFormValues() {
+  els.syncKey.value = state.sync.key || "";
+  els.syncAuto.checked = Boolean(state.sync.auto);
+}
+
+function saveSyncSettingsFromForm() {
+  state.sync.key = cleanText(els.syncKey.value);
+  state.sync.auto = els.syncAuto.checked;
+  saveSyncSettings();
+  updateSyncStatus("Configuracion guardada", "ok");
+  scheduleAutoSync(500);
+}
+
+function updateSyncStatus(message, type = "") {
+  if (!message) {
+    if (!state.sync.key) {
+      message = "Sin clave de sincronizacion";
+    } else if (state.sync.lastSyncedAt) {
+      message = `Ultima sincronizacion: ${formatDateTime(state.sync.lastSyncedAt)}`;
+      type = "ok";
+    } else {
+      message = "Pendiente de sincronizar";
+    }
+  }
+
+  els.syncStatus.textContent = message;
+  els.syncStatus.classList.toggle("ok", type === "ok");
+  els.syncStatus.classList.toggle("error", type === "error");
+}
+
+let syncTimer = null;
+let syncInProgress = false;
+
+function scheduleAutoSync(delay = 0) {
+  window.clearTimeout(syncTimer);
+  if (!state.sync.auto || !state.sync.key || !navigator.onLine) return;
+  syncTimer = window.setTimeout(() => syncNow({ silent: true }), delay);
+}
+
+async function syncNow({ silent } = { silent: false }) {
+  state.sync.key = cleanText(els.syncKey.value || state.sync.key);
+  state.sync.auto = els.syncAuto.checked;
+  saveSyncSettings();
+
+  if (!state.sync.key) {
+    updateSyncStatus("Falta la clave de sincronizacion", "error");
+    return;
+  }
+
+  if (!navigator.onLine) {
+    updateSyncStatus("Sin conexion", "error");
+    return;
+  }
+
+  if (syncInProgress) return;
+  syncInProgress = true;
+  if (!silent) updateSyncStatus("Sincronizando...");
+  els.syncNow.disabled = true;
+
+  try {
+    const response = await fetch(SYNC_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildSyncPayload()),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error || "No se pudo sincronizar");
+    }
+
+    applySyncedData(data);
+    state.sync.lastSyncedAt = data.syncedAt || new Date().toISOString();
+    saveSyncSettings();
+    setSyncFormValues();
+    buildTaskControls();
+    resetForm();
+    render();
+    updateSyncStatus(
+      `Sincronizado: ${state.entries.length} registros`,
+      "ok",
+    );
+  } catch (error) {
+    updateSyncStatus(error.message || "No se pudo sincronizar", "error");
+  } finally {
+    syncInProgress = false;
+    els.syncNow.disabled = false;
+  }
+}
+
+function buildSyncPayload() {
+  return {
+    syncKey: state.sync.key,
+    version: APP_VERSION,
+    entries: state.entries.map(normalizeEntry),
+    deletedEntries: state.deletedEntries.map(normalizeTombstone),
+    customTasks: state.customTasks,
+    deletedTasks: state.deletedTasks,
+  };
+}
+
+function applySyncedData(data) {
+  const deletedIds = new Set((data.deletedEntries || []).map((item) => item.id));
+  state.entries = (data.entries || [])
+    .map(normalizeEntry)
+    .filter((entry) => entry.id && !deletedIds.has(entry.id))
+    .sort(compareEntries);
+  state.deletedEntries = (data.deletedEntries || [])
+    .map(normalizeTombstone)
+    .filter((item) => item.id);
+  state.customTasks = uniqueTasks(data.customTasks || []);
+  state.deletedTasks = uniqueTasks(data.deletedTasks || []);
+  persistAll();
+}
+
+function uniqueTasks(tasks) {
+  return [...new Set(tasks.map((task) => cleanText(task).toUpperCase()).filter(Boolean))];
 }
 
 function startNewEntryFromButton() {
@@ -401,6 +545,10 @@ async function checkForAppUpdate() {
 
 function saveCurrent(event) {
   event.preventDefault();
+  const savedAt = new Date().toISOString();
+  const previous = state.editingId
+    ? state.entries.find((item) => item.id === state.editingId)
+    : null;
 
   const entry = {
     id: state.editingId || createId(),
@@ -410,6 +558,8 @@ function saveCurrent(event) {
     notes: els.notes.value.trim(),
     start: els.start.value,
     end: els.end.value,
+    createdAt: previous?.createdAt || savedAt,
+    updatedAt: savedAt,
   };
 
   if (state.editingId) {
@@ -420,18 +570,31 @@ function saveCurrent(event) {
     state.entries.push(entry);
   }
 
+  state.deletedEntries = state.deletedEntries.filter((item) => item.id !== entry.id);
   persist();
+  persistDeletedEntries();
   resetForm();
   render();
+  scheduleAutoSync(800);
   closeEntryModalOnMobile();
 }
 
 function deleteCurrent() {
   if (!state.editingId) return;
+  const deletedAt = new Date().toISOString();
+  const entry = state.entries.find((item) => item.id === state.editingId);
   state.entries = state.entries.filter((entry) => entry.id !== state.editingId);
+  state.deletedEntries = upsertTombstone(state.deletedEntries, {
+    id: state.editingId,
+    task: entry?.task || "",
+    deletedAt,
+    updatedAt: deletedAt,
+  });
   persist();
+  persistDeletedEntries();
   resetForm();
   render();
+  scheduleAutoSync(800);
   closeEntryModalOnMobile();
 }
 
@@ -807,6 +970,16 @@ function todayISO() {
   return toISODate(date);
 }
 
+function formatDateTime(iso) {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return `${formatDate(toISODate(date))} ${String(date.getHours()).padStart(
+    2,
+    "0",
+  )}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
 function currentYear() {
   return String(new Date().getFullYear());
 }
@@ -836,14 +1009,57 @@ function createId() {
   return `id-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function normalizeEntry(entry, fallbackDate = new Date().toISOString()) {
+  const updatedAt = entry.updatedAt || entry.createdAt || fallbackDate;
+  return {
+    id: entry.id || createId(),
+    date: parseDate(entry.date || entry.FECHA || entry.Fecha),
+    task: cleanText(entry.task || entry.TAREA || entry.Tarea).toUpperCase(),
+    description: cleanText(
+      entry.description || entry.DESCRIPCION || entry.Descripcion,
+    ),
+    notes: cleanText(entry.notes || entry.Notas || entry.NOTAS),
+    start: parseTime(entry.start || entry["TIEMPO INICIO"] || entry.inicio),
+    end: parseTime(entry.end || entry["TIEMPO FINAL"] || entry.final),
+    createdAt: entry.createdAt || updatedAt,
+    updatedAt,
+  };
+}
+
+function normalizeTombstone(item, fallbackDate = new Date().toISOString()) {
+  const updatedAt = item.updatedAt || item.deletedAt || fallbackDate;
+  return {
+    id: item.id || "",
+    task: cleanText(item.task).toUpperCase(),
+    deletedAt: item.deletedAt || updatedAt,
+    updatedAt,
+  };
+}
+
+function upsertTombstone(list, tombstone) {
+  const normalized = normalizeTombstone(tombstone);
+  return [
+    normalized,
+    ...list.filter((item) => item.id !== normalized.id),
+  ];
+}
+
 function loadEntries() {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) return JSON.parse(saved);
+    if (saved) {
+      const migratedAt = new Date().toISOString();
+      const entries = JSON.parse(saved)
+        .map((entry) => normalizeEntry(entry, migratedAt))
+        .filter((entry) => entry.date && entry.task);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+      return entries;
+    }
   } catch {
     localStorage.removeItem(STORAGE_KEY);
   }
-  return SAMPLE_ENTRIES;
+  const migratedAt = new Date().toISOString();
+  return SAMPLE_ENTRIES.map((entry) => normalizeEntry(entry, migratedAt));
 }
 
 function loadCustomTasks() {
@@ -866,6 +1082,33 @@ function loadDeletedTasks() {
   return [];
 }
 
+function loadDeletedEntries() {
+  try {
+    const saved = localStorage.getItem(DELETED_ENTRIES_KEY);
+    if (saved) return JSON.parse(saved).map(normalizeTombstone);
+  } catch {
+    localStorage.removeItem(DELETED_ENTRIES_KEY);
+  }
+  return [];
+}
+
+function loadSyncSettings() {
+  try {
+    const saved = localStorage.getItem(SYNC_SETTINGS_KEY);
+    if (saved) {
+      const settings = JSON.parse(saved);
+      return {
+        key: cleanText(settings.key),
+        auto: Boolean(settings.auto),
+        lastSyncedAt: cleanText(settings.lastSyncedAt),
+      };
+    }
+  } catch {
+    localStorage.removeItem(SYNC_SETTINGS_KEY);
+  }
+  return { key: "", auto: false, lastSyncedAt: "" };
+}
+
 function persist() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state.entries));
 }
@@ -878,6 +1121,21 @@ function persistDeletedTasks() {
   localStorage.setItem(DELETED_TASKS_KEY, JSON.stringify(state.deletedTasks));
 }
 
+function persistDeletedEntries() {
+  localStorage.setItem(DELETED_ENTRIES_KEY, JSON.stringify(state.deletedEntries));
+}
+
+function saveSyncSettings() {
+  localStorage.setItem(SYNC_SETTINGS_KEY, JSON.stringify(state.sync));
+}
+
+function persistAll() {
+  persist();
+  persistCustomTasks();
+  persistDeletedTasks();
+  persistDeletedEntries();
+}
+
 async function handleFileLoad() {
   const file = els.fileInput.files?.[0];
   if (!file) return;
@@ -885,8 +1143,10 @@ async function handleFileLoad() {
   try {
     const extension = file.name.toLowerCase().split(".").pop();
     let entries;
+    let backupData = null;
     if (extension === "json") {
-      entries = normalizeImportedEntries(JSON.parse(await file.text()));
+      backupData = JSON.parse(await file.text());
+      entries = normalizeImportedEntries(backupData);
     } else if (extension === "csv") {
       entries = rowsToEntries(parseCsv(await file.text()));
     } else if (extension === "xlsx" || extension === "xls") {
@@ -897,7 +1157,19 @@ async function handleFileLoad() {
 
     if (!entries.length) throw new Error("No se han encontrado registros");
     state.entries = entries;
+    state.deletedEntries = Array.isArray(backupData?.deletedEntries)
+      ? backupData.deletedEntries.map(normalizeTombstone)
+      : [];
+    if (Array.isArray(backupData?.customTasks)) {
+      state.customTasks = uniqueTasks(backupData.customTasks);
+      persistCustomTasks();
+    }
+    if (Array.isArray(backupData?.deletedTasks)) {
+      state.deletedTasks = uniqueTasks(backupData.deletedTasks);
+      persistDeletedTasks();
+    }
     persist();
+    persistDeletedEntries();
     buildTaskControls();
     resetForm();
     render();
@@ -939,15 +1211,17 @@ function rowsToEntries(rows) {
 
   return rows
     .slice(1)
-    .map((row) => ({
-      id: createId(),
-      date: parseDate(row[index.date]),
-      task: cleanText(row[index.task]).toUpperCase(),
-      description: cleanText(row[index.description]),
-      notes: cleanText(row[index.notes]),
-      start: parseTime(row[index.start]),
-      end: parseTime(row[index.end]),
-    }))
+    .map((row) =>
+      normalizeEntry({
+        id: createId(),
+        date: row[index.date],
+        task: row[index.task],
+        description: row[index.description],
+        notes: row[index.notes],
+        start: row[index.start],
+        end: row[index.end],
+      }),
+    )
     .filter((entry) => entry.date && entry.task);
 }
 
@@ -955,17 +1229,7 @@ function normalizeImportedEntries(input) {
   const list = Array.isArray(input) ? input : input.entries;
   if (!Array.isArray(list)) return [];
   return list
-    .map((item) => ({
-      id: item.id || createId(),
-      date: parseDate(item.date || item.FECHA || item.Fecha),
-      task: cleanText(item.task || item.TAREA || item.Tarea).toUpperCase(),
-      description: cleanText(
-        item.description || item.DESCRIPCION || item.Descripcion,
-      ),
-      notes: cleanText(item.notes || item.Notas || item.NOTAS),
-      start: parseTime(item.start || item["TIEMPO INICIO"] || item.inicio),
-      end: parseTime(item.end || item["TIEMPO FINAL"] || item.final),
-    }))
+    .map((item) => normalizeEntry(item))
     .filter((entry) => entry.date && entry.task);
 }
 
@@ -1096,7 +1360,16 @@ function exportCsv() {
 function exportJson() {
   downloadText(
     "tiempos-backup.json",
-    JSON.stringify({ entries: state.entries }, null, 2),
+    JSON.stringify(
+      {
+        entries: state.entries,
+        deletedEntries: state.deletedEntries,
+        customTasks: state.customTasks,
+        deletedTasks: state.deletedTasks,
+      },
+      null,
+      2,
+    ),
     "application/json",
   );
 }
