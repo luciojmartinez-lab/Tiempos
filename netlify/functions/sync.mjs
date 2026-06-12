@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { getStore } from "@netlify/blobs";
 
 const STORE_NAME = "tiempos-sync";
-const SYNC_VERSION = "100v13";
+const SYNC_VERSION = "100v14";
 const BULK_MIGRATION_LIMIT = 5;
 const LEGACY_UPDATED_AT = "2000-01-01T00:00:00.000Z";
 
@@ -50,7 +50,18 @@ export const config = {
 
 function mergeStores(remote, incoming) {
   remote = repairStore(remote);
-  const incomingEntries = repairLegacyMigrationEntries(incoming.entries || []);
+  let incomingEntries = repairLegacyMigrationEntries(incoming.entries || []);
+  let incomingDeletedEntries = (incoming.deletedEntries || []).map(normalizeTombstone);
+  if (remote.resetAt) {
+    incomingEntries = filterIncomingAfterReset(
+      incomingEntries,
+      remote.entries,
+      remote.resetAt,
+    );
+    incomingDeletedEntries = incomingDeletedEntries.filter(
+      (item) => compareDate(getRecordDate(item), remote.resetAt) > 0,
+    );
+  }
   const merged = {
     entries: [],
     deletedEntries: [],
@@ -70,7 +81,7 @@ function mergeStores(remote, incoming) {
   addRecords(records, remote.entries || [], false);
   addRecords(records, incomingEntries, false);
   addRecords(records, remote.deletedEntries || [], true);
-  addRecords(records, incoming.deletedEntries || [], true);
+  addRecords(records, incomingDeletedEntries, true);
 
   for (const record of records.values()) {
     if (record.deleted) {
@@ -125,6 +136,14 @@ function shouldUseCloudOnly(remote, incoming) {
   if (!remote.resetAt) return false;
   const clientLastSyncedAt = cleanText(incoming.clientLastSyncedAt);
   return !clientLastSyncedAt || compareDate(clientLastSyncedAt, remote.resetAt) < 0;
+}
+
+function filterIncomingAfterReset(incomingEntries, remoteEntries, resetAt) {
+  const remoteIds = new Set(remoteEntries.map((entry) => entry.id));
+  return incomingEntries.filter(
+    (entry) =>
+      remoteIds.has(entry.id) || compareDate(getRecordDate(entry), resetAt) > 0,
+  );
 }
 
 function addRecords(records, list, deleted) {
