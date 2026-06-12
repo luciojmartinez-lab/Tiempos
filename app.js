@@ -3,7 +3,7 @@ const CUSTOM_TASKS_KEY = "tiempos.customTasks.100v2";
 const DELETED_TASKS_KEY = "tiempos.deletedTasks.100v3";
 const DELETED_ENTRIES_KEY = "tiempos.deletedEntries.100v11";
 const SYNC_SETTINGS_KEY = "tiempos.syncSettings.100v11";
-const APP_VERSION = "100v21";
+const APP_VERSION = "100v22";
 const ALL_YEARS_VALUE = "all";
 const SYNC_ENDPOINT = "/api/sync";
 const BULK_MIGRATION_LIMIT = 5;
@@ -843,7 +843,7 @@ function renderStats() {
 
   els.statAverage.textContent = minutesToDuration(stats.averageMinutes);
   els.statTotal.textContent = minutesToDuration(stats.totalMinutes);
-  els.statDays.textContent = String(stats.spanDays);
+  els.statDays.textContent = String(stats.workedDays);
   els.statEntries.textContent = String(rows.length);
   els.chartTotal.textContent = minutesToDuration(stats.totalMinutes);
 }
@@ -1075,14 +1075,13 @@ function computeRows() {
 
 function computeStats(rows) {
   const totalMinutes = rows.reduce((sum, row) => sum + row.partialMinutes, 0);
-  const datedRows = rows.filter((row) => row.date);
-  const first = datedRows[0]?.date;
-  const last = datedRows[datedRows.length - 1]?.date;
-  const spanDays = first && last ? Math.max(1, dateDiffDays(first, last) + 1) : 0;
+  const workedDays = new Set(
+    rows.map((row) => row.date).filter(Boolean),
+  ).size;
   return {
     totalMinutes,
-    spanDays,
-    averageMinutes: spanDays ? Math.round(totalMinutes / spanDays) : 0,
+    workedDays,
+    averageMinutes: workedDays ? Math.round(totalMinutes / workedDays) : 0,
   };
 }
 
