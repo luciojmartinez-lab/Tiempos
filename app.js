@@ -3,7 +3,7 @@ const CUSTOM_TASKS_KEY = "tiempos.customTasks.100v2";
 const DELETED_TASKS_KEY = "tiempos.deletedTasks.100v3";
 const DELETED_ENTRIES_KEY = "tiempos.deletedEntries.100v11";
 const SYNC_SETTINGS_KEY = "tiempos.syncSettings.100v11";
-const APP_VERSION = "100v22";
+const APP_VERSION = "100v23";
 const ALL_YEARS_VALUE = "all";
 const SYNC_ENDPOINT = "/api/sync";
 const BULK_MIGRATION_LIMIT = 5;
@@ -850,6 +850,22 @@ function renderStats() {
 
 function renderEntries() {
   const rows = sortRowsForDisplay(getFilteredRows());
+  const filteredTotalMinutes = rows.reduce(
+    (sum, row) => sum + row.partialMinutes,
+    0,
+  );
+  const totalRow = `<tr class="daily-total-row">
+      <td></td>
+      <td>Total diario</td>
+      <td></td>
+      <td></td>
+      <td class="num"></td>
+      <td class="num"></td>
+      <td class="num"></td>
+      <td class="num"></td>
+      <td class="num daily-cell">${minutesToDuration(filteredTotalMinutes)}</td>
+      <td class="num"></td>
+    </tr>`;
 
   els.body.innerHTML = rows
     .map(
@@ -868,9 +884,9 @@ function renderEntries() {
         <td class="num">${row.daysWork ?? ""}</td>
       </tr>`,
     )
-    .join("");
+    .join("") + totalRow;
 
-  els.body.querySelectorAll("tr").forEach((row) => {
+  els.body.querySelectorAll("tr[data-id]").forEach((row) => {
     row.addEventListener("click", () => editEntry(row.dataset.id));
     row.addEventListener("dblclick", () =>
       editEntry(row.dataset.id, { openModal: true }),

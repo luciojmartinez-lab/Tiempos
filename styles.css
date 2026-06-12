@@ -598,6 +598,11 @@ tbody tr.selected td {
   background: #d7f0e2;
 }
 
+.daily-total-row td {
+  background: #e8eef8 !important;
+  font-weight: 800;
+}
+
 td.num {
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -1236,23 +1241,38 @@ th:nth-child(10) {
     font-size: 13px;
   }
 
-  .stats-strip,
+  .stats-strip {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 5px;
+  }
+
   .chart-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .stats-strip article,
+  .stats-strip article {
+    min-height: 52px;
+    padding: 6px;
+  }
+
   .chart-summary article {
     min-height: 54px;
     padding: 8px;
   }
 
-  .stats-strip span,
+  .stats-strip span {
+    font-size: 8px;
+  }
+
   .chart-summary span {
     font-size: 10px;
   }
 
-  .stats-strip strong,
+  .stats-strip strong {
+    margin-top: 4px;
+    font-size: 18px;
+  }
+
   .chart-summary strong {
     margin-top: 4px;
     font-size: 18px;
@@ -1292,12 +1312,12 @@ th:nth-child(10) {
   }
 
   #sort-order {
-    grid-column: 1 / 4;
+    grid-column: 1 / 3;
     order: 0;
   }
 
   #search-box {
-    grid-column: 4 / 7;
+    grid-column: 3 / 7;
     order: 1;
   }
 
