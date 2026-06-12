@@ -10,12 +10,12 @@
     <meta name="apple-mobile-web-app-title" content="Tiempos" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
-    <link rel="stylesheet" href="/styles.css?v=100v17" />
+    <link rel="stylesheet" href="/styles.css?v=100v18" />
     <script
       defer
       src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"
     ></script>
-    <script defer src="/app.js?v=100v17"></script>
+    <script defer src="/app.js?v=100v18"></script>
   </head>
   <body>
     <header class="top-navbar">
@@ -26,7 +26,7 @@
             ><span class="live-indicator"></span> Control de trabajo</span
           >
         </div>
-        <span class="version-badge">100v17</span>
+        <span class="version-badge">100v18</span>
       </div>
       <nav class="navbar-row-menu" aria-label="Hojas">
         <button class="nav-item active" type="button" data-view="datos">
@@ -183,6 +183,20 @@
                 <option value="desc">Nuevo a viejo</option>
                 <option value="asc">Viejo a nuevo</option>
               </select>
+              <select
+                class="filter-select"
+                id="year-filter"
+                aria-label="Filtrar por año"
+              >
+                <option value="">Año</option>
+              </select>
+              <select
+                class="filter-select"
+                id="month-filter"
+                aria-label="Filtrar por mes"
+              >
+                <option value="">Mes</option>
+              </select>
               <label class="date-filter-field">
                 <span>Dia</span>
                 <input
@@ -239,13 +253,13 @@
             <span class="ribbon-title">Sincronizacion</span>
             <div class="sync-grid">
               <label class="sync-key-field">
-                <span>Clave compartida</span>
+                <span>Clave</span>
                 <span class="sync-key-control">
                   <input
                     type="password"
                     id="sync-key"
                     autocomplete="off"
-                    placeholder="Clave compartida"
+                    placeholder="Clave"
                   />
                   <button
                     class="sync-eye"
@@ -268,24 +282,24 @@
                 Sincronizar
               </button>
               <button class="ghost sync-check" type="button" id="sync-check">
-                Comprobar nube
+                Comprobar
               </button>
               <label class="sync-toggle">
                 <input type="checkbox" id="sync-auto" />
-                <span>Automatico</span>
+                <span>Auto</span>
               </label>
               <details class="sync-advanced">
-                <summary>Avanzado</summary>
+                <summary>Mas</summary>
                 <div class="sync-advanced-actions">
                   <button class="ghost sync-pull" type="button" id="sync-pull">
-                    Descargar nube
+                    Descargar
                   </button>
                   <button
                     class="ghost sync-replace"
                     type="button"
                     id="sync-replace"
                   >
-                    Subir este dispositivo
+                    Subir copia
                   </button>
                 </div>
               </details>

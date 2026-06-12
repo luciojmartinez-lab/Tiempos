@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { getStore } from "@netlify/blobs";
 
 const STORE_NAME = "tiempos-sync";
-const SYNC_VERSION = "100v17";
+const SYNC_VERSION = "100v18";
 const BULK_MIGRATION_LIMIT = 5;
 const LEGACY_UPDATED_AT = "2000-01-01T00:00:00.000Z";
 

@@ -499,6 +499,15 @@ select:focus {
   width: 150px;
 }
 
+.filter-select {
+  width: 92px;
+}
+
+.filter-select.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
 .date-filter-field {
   position: relative;
   display: block;
@@ -1266,14 +1275,21 @@ th:nth-child(10) {
 
   .table-actions {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .table-actions select,
+  .filter-select,
   .date-filter-field,
   #date-filter,
   #search-box {
     width: 100%;
+  }
+
+  #sort-order,
+  #search-box,
+  .clear-date-filter {
+    grid-column: 1 / -1;
   }
 
   #search-box {
@@ -1330,7 +1346,7 @@ th:nth-child(10) {
   }
 
   .bar-line {
-    grid-template-columns: 88px minmax(0, 1fr) 54px;
+    grid-template-columns: 110px minmax(0, 1fr) 52px;
   }
 
   .vertical {

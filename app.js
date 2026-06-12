@@ -3,7 +3,7 @@ const CUSTOM_TASKS_KEY = "tiempos.customTasks.100v2";
 const DELETED_TASKS_KEY = "tiempos.deletedTasks.100v3";
 const DELETED_ENTRIES_KEY = "tiempos.deletedEntries.100v11";
 const SYNC_SETTINGS_KEY = "tiempos.syncSettings.100v11";
-const APP_VERSION = "100v17";
+const APP_VERSION = "100v18";
 const ALL_YEARS_VALUE = "all";
 const SYNC_ENDPOINT = "/api/sync";
 const BULK_MIGRATION_LIMIT = 5;
@@ -101,6 +101,8 @@ const state = {
   editingId: null,
   search: "",
   dateFilter: "",
+  yearFilter: "",
+  monthFilter: "",
   sortOrder: "desc",
   chartYear: currentYear(),
 };
@@ -163,6 +165,8 @@ function bindElements() {
     exportJson: document.getElementById("export-json"),
     search: document.getElementById("search-box"),
     dateFilter: document.getElementById("date-filter"),
+    yearFilter: document.getElementById("year-filter"),
+    monthFilter: document.getElementById("month-filter"),
     clearDateFilter: document.getElementById("clear-date-filter"),
     sortOrder: document.getElementById("sort-order"),
     body: document.getElementById("entries-body"),
@@ -266,12 +270,40 @@ function bindEvents() {
   });
   els.dateFilter.addEventListener("change", () => {
     state.dateFilter = els.dateFilter.value;
+    if (state.dateFilter) {
+      state.yearFilter = "";
+      state.monthFilter = "";
+      els.yearFilter.value = "";
+      els.monthFilter.value = "";
+    }
+    updateDateFilterState();
+    renderEntries();
+  });
+  els.yearFilter.addEventListener("change", () => {
+    state.yearFilter = els.yearFilter.value;
+    if (state.yearFilter) {
+      state.dateFilter = "";
+      els.dateFilter.value = "";
+    }
+    updateDateFilterState();
+    renderEntries();
+  });
+  els.monthFilter.addEventListener("change", () => {
+    state.monthFilter = els.monthFilter.value;
+    if (state.monthFilter) {
+      state.dateFilter = "";
+      els.dateFilter.value = "";
+    }
     updateDateFilterState();
     renderEntries();
   });
   els.clearDateFilter.addEventListener("click", () => {
     state.dateFilter = "";
+    state.yearFilter = "";
+    state.monthFilter = "";
     els.dateFilter.value = "";
+    els.yearFilter.value = "";
+    els.monthFilter.value = "";
     updateDateFilterState();
     renderEntries();
   });
@@ -760,15 +792,44 @@ function updateTaskButtonState() {
 }
 
 function updateDateFilterState() {
-  const active = Boolean(state.dateFilter);
+  const active = Boolean(
+    state.dateFilter || state.yearFilter || state.monthFilter,
+  );
   els.clearDateFilter.hidden = !active;
-  els.dateFilter.classList.toggle("active", active);
+  els.dateFilter.classList.toggle("active", Boolean(state.dateFilter));
+  els.yearFilter.classList.toggle("active", Boolean(state.yearFilter));
+  els.monthFilter.classList.toggle("active", Boolean(state.monthFilter));
 }
 
 function render() {
+  renderDataFilterOptions();
   renderStats();
   renderEntries();
   renderCharts();
+}
+
+function renderDataFilterOptions() {
+  const yearValue = state.yearFilter;
+  const monthValue = state.monthFilter;
+  const years = getDataYears();
+
+  els.yearFilter.innerHTML = [
+    '<option value="">Año</option>',
+    ...years.map((year) => `<option value="${year}">${year}</option>`),
+  ].join("");
+  els.yearFilter.value = years.includes(yearValue) ? yearValue : "";
+  state.yearFilter = els.yearFilter.value;
+
+  els.monthFilter.innerHTML = [
+    '<option value="">Mes</option>',
+    ...MONTHS.map(
+      (month, index) =>
+        `<option value="${String(index + 1).padStart(2, "0")}">${month}</option>`,
+    ),
+  ].join("");
+  els.monthFilter.value = monthValue;
+  state.monthFilter = els.monthFilter.value;
+  updateDateFilterState();
 }
 
 function renderStats() {
@@ -879,13 +940,13 @@ function renderCharts() {
 
   els.taskSummary.innerHTML = summaryMarkup(
     "TAREAS",
-    "Total horas",
+    "Horas",
     taskRows,
     total,
   );
   els.monthSummary.innerHTML = summaryMarkup(
     "MESES",
-    "Suma de PARCIAL",
+    "Horas",
     monthRows,
     monthRows.reduce((sum, item) => sum + item[1], 0),
   );
@@ -1018,6 +1079,12 @@ function computeStats(rows) {
 
 function matchesSearch(row) {
   if (state.dateFilter && row.date !== state.dateFilter) return false;
+  if (state.yearFilter && !String(row.date || "").startsWith(state.yearFilter)) {
+    return false;
+  }
+  if (state.monthFilter && String(row.date || "").slice(5, 7) !== state.monthFilter) {
+    return false;
+  }
   if (!state.search) return true;
   return [
     row.date,
