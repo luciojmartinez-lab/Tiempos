@@ -1,6 +1,6 @@
 {
   "name": "tiempos",
-  "version": "100.18.0",
+  "version": "100.19.0",
   "private": true,
   "type": "module",
   "dependencies": {
