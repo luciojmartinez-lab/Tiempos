@@ -1,7 +1,8 @@
 const STORAGE_KEY = "tiempos.entries.100v1";
 const CUSTOM_TASKS_KEY = "tiempos.customTasks.100v2";
 const DELETED_TASKS_KEY = "tiempos.deletedTasks.100v3";
-const APP_VERSION = "100v9";
+const APP_VERSION = "100v10";
+const ALL_YEARS_VALUE = "all";
 
 const TASKS = [
   "UNI",
@@ -94,6 +95,7 @@ const state = {
   search: "",
   dateFilter: "",
   sortOrder: "desc",
+  chartYear: currentYear(),
 };
 
 const els = {};
@@ -150,6 +152,7 @@ function bindElements() {
     statEntries: document.getElementById("stat-entries"),
     chartTotal: document.getElementById("chart-total"),
     chartTopTask: document.getElementById("chart-top-task"),
+    chartYearFilter: document.getElementById("chart-year-filter"),
     chartTopMonth: document.getElementById("chart-top-month"),
     taskSummary: document.getElementById("task-summary"),
     taskChart: document.getElementById("task-chart"),
@@ -236,6 +239,10 @@ function bindEvents() {
   els.sortOrder.addEventListener("change", () => {
     state.sortOrder = els.sortOrder.value;
     renderEntries();
+  });
+  els.chartYearFilter.addEventListener("change", () => {
+    state.chartYear = els.chartYearFilter.value;
+    renderCharts();
   });
   els.loadFile.addEventListener("click", () => els.fileInput.click());
   els.fileInput.addEventListener("change", handleFileLoad);
@@ -570,7 +577,8 @@ function sortRowsForDisplay(rows) {
 }
 
 function renderCharts() {
-  const rows = computeRows();
+  updateChartYearOptions();
+  const rows = filterRowsByChartYear(computeRows());
   const byTask = groupMinutes(rows, (row) => row.task);
   const byMonth = groupMonths(rows);
   const taskRows = [...byTask.entries()]
@@ -579,6 +587,7 @@ function renderCharts() {
   const monthRows = MONTHS.map((label, index) => [label, byMonth.get(index) || 0]);
   const total = taskRows.reduce((sum, item) => sum + item[1], 0);
 
+  els.chartTotal.textContent = minutesToDuration(total);
   els.chartTopTask.textContent = taskRows[0]?.[0] || "-";
   els.chartTopMonth.textContent =
     monthRows.slice().sort((a, b) => b[1] - a[1])[0]?.[0] || "-";
@@ -590,7 +599,7 @@ function renderCharts() {
     total,
   );
   els.monthSummary.innerHTML = summaryMarkup(
-    "TAREAS",
+    "MESES",
     "Suma de PARCIAL",
     monthRows,
     monthRows.reduce((sum, item) => sum + item[1], 0),
@@ -623,6 +632,35 @@ function renderCharts() {
       </div>`,
     )
     .join("");
+}
+
+function updateChartYearOptions() {
+  const years = getDataYears();
+  const options = [
+    `<option value="${ALL_YEARS_VALUE}">Todos</option>`,
+    ...years.map((year) => `<option value="${year}">${year}</option>`),
+  ];
+
+  els.chartYearFilter.innerHTML = options.join("");
+  els.chartYearFilter.value = state.chartYear;
+  if (!els.chartYearFilter.value) {
+    state.chartYear = currentYear();
+    els.chartYearFilter.value = state.chartYear;
+  }
+}
+
+function getDataYears() {
+  const years = state.entries
+    .map((entry) => String(entry.date || "").slice(0, 4))
+    .filter((year) => /^\d{4}$/.test(year));
+  return [...new Set([...years, currentYear()])].sort((a, b) =>
+    b.localeCompare(a),
+  );
+}
+
+function filterRowsByChartYear(rows) {
+  if (state.chartYear === ALL_YEARS_VALUE) return rows;
+  return rows.filter((row) => String(row.date || "").startsWith(state.chartYear));
 }
 
 function summaryMarkup(labelHead, valueHead, rows, totalMinutes) {
@@ -767,6 +805,10 @@ function dateDiffDays(start, end) {
 function todayISO() {
   const date = new Date();
   return toISODate(date);
+}
+
+function currentYear() {
+  return String(new Date().getFullYear());
 }
 
 function nowTime() {

@@ -10,12 +10,12 @@
     <meta name="apple-mobile-web-app-title" content="Tiempos" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
-    <link rel="stylesheet" href="/styles.css?v=100v9" />
+    <link rel="stylesheet" href="/styles.css?v=100v10" />
     <script
       defer
       src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"
     ></script>
-    <script defer src="/app.js?v=100v9"></script>
+    <script defer src="/app.js?v=100v10"></script>
   </head>
   <body>
     <header class="top-navbar">
@@ -26,7 +26,7 @@
             ><span class="live-indicator"></span> Control de trabajo</span
           >
         </div>
-        <span class="version-badge">100v9</span>
+        <span class="version-badge">100v10</span>
       </div>
       <nav class="navbar-row-menu" aria-label="Hojas">
         <button class="nav-item active" type="button" data-view="datos">
@@ -173,8 +173,8 @@
                   <th>TAREA</th>
                   <th>DESCRIPCION</th>
                   <th>Notas</th>
-                  <th>TIEMPO INICIO</th>
-                  <th>TIEMPO FINAL</th>
+                  <th>INICIO</th>
+                  <th>FINAL</th>
                   <th>PARCIAL</th>
                   <th>TOTAL</th>
                   <th>DIARIO</th>
@@ -230,6 +230,10 @@
           <article>
             <span>Mejor tarea</span>
             <strong id="chart-top-task">-</strong>
+            <label class="chart-year-control" for="chart-year-filter">
+              <span>Año</span>
+              <select id="chart-year-filter"></select>
+            </label>
           </article>
           <article>
             <span>Mejor mes</span>
@@ -247,7 +251,7 @@
           </div>
           <div class="chart-panel">
             <div class="section-head">
-              <h1>Total 2025-26</h1>
+              <h1>Total por meses</h1>
             </div>
             <div class="summary-table" id="month-summary"></div>
             <div class="bar-chart vertical" id="month-chart"></div>

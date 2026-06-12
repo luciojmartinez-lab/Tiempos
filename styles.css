@@ -388,6 +388,24 @@ select:focus {
   font-size: 22px;
 }
 
+.chart-year-control {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 128px);
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.chart-year-control span {
+  font-size: 11px;
+}
+
+.chart-year-control select {
+  min-height: 30px;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
 .table-panel {
   min-height: 0;
   display: flex;
@@ -1097,10 +1115,6 @@ th:nth-child(10) {
   td:nth-child(3),
   th:nth-child(4),
   td:nth-child(4),
-  th:nth-child(5),
-  td:nth-child(5),
-  th:nth-child(6),
-  td:nth-child(6),
   th:nth-child(8),
   td:nth-child(8),
   th:nth-child(10),
@@ -1109,16 +1123,21 @@ th:nth-child(10) {
   }
 
   th:nth-child(1) {
-    width: 82px;
+    width: 76px;
   }
 
   th:nth-child(2) {
-    width: auto;
+    width: 88px;
+  }
+
+  th:nth-child(5),
+  th:nth-child(6) {
+    width: 48px;
   }
 
   th:nth-child(7),
   th:nth-child(9) {
-    width: 58px;
+    width: 52px;
   }
 
   .summary-row {
