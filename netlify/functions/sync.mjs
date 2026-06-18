@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { getStore } from "@netlify/blobs";
 
 const STORE_NAME = "tiempos-sync";
-const SYNC_VERSION = "100v23";
+const SYNC_VERSION = "100v24";
 const BULK_MIGRATION_LIMIT = 5;
 const LEGACY_UPDATED_AT = "2000-01-01T00:00:00.000Z";
 
@@ -37,6 +37,7 @@ export default async (req) => {
           ? replaceStore(payload)
           : remote
         : mergeStores(remote, payload);
+    enforceTrackingPolicy(merged);
     merged.updatedAt = new Date().toISOString();
     if (mode === "replace") merged.resetAt = merged.updatedAt;
 
@@ -81,6 +82,10 @@ function mergeStores(remote, incoming) {
       ...(remote.deletedTasks || []),
       ...(incoming.deletedTasks || []),
     ]),
+    trackingSettings: mergeTrackingSettings(
+      remote.trackingSettings,
+      incoming.trackingSettings,
+    ),
     updatedAt: remote.updatedAt || "",
     resetAt: remote.resetAt || "",
   };
@@ -117,6 +122,7 @@ function replaceStore(incoming) {
       .filter((item) => item.id),
     customTasks: uniqueTasks(incoming.customTasks || []),
     deletedTasks: uniqueTasks(incoming.deletedTasks || []),
+    trackingSettings: normalizeTrackingSettings(incoming.trackingSettings),
     updatedAt: "",
     resetAt: "",
   };
@@ -135,6 +141,7 @@ function repairStore(store) {
       .filter((item) => item.id),
     customTasks: uniqueTasks(store.customTasks || []),
     deletedTasks: uniqueTasks(store.deletedTasks || []),
+    trackingSettings: normalizeTrackingSettings(store.trackingSettings),
     updatedAt: cleanText(store.updatedAt),
     resetAt: cleanText(store.resetAt),
   };
@@ -195,6 +202,13 @@ function addRecords(records, list, deleted) {
     if (!value.id) return;
 
     const previous = records.get(value.id);
+    if (previous && !previous.deleted && !deleted) {
+      records.set(value.id, {
+        deleted: false,
+        value: mergeEntryValues(previous.value, value),
+      });
+      return;
+    }
     const nextDate = getRecordDate(value);
     const previousDate = previous ? getRecordDate(previous.value) : "";
     if (!previous || compareDate(nextDate, previousDate) > 0) {
@@ -203,8 +217,70 @@ function addRecords(records, list, deleted) {
   });
 }
 
+function mergeEntryValues(first, second) {
+  first = normalizeEntry(first);
+  second = normalizeEntry(second);
+  const firstIsNewer =
+    compareDate(getRecordDate(first), getRecordDate(second)) >= 0;
+  const newer = firstIsNewer ? first : second;
+  const older = firstIsNewer ? second : first;
+  const statusSource =
+    compareDate(first.statusUpdatedAt, second.statusUpdatedAt) >= 0
+      ? first
+      : second;
+  const segments = new Map();
+
+  [...older.segments, ...newer.segments].forEach((segment) => {
+    const previous = segments.get(segment.id);
+    if (
+      !previous ||
+      compareDate(segment.updatedAt, previous.updatedAt) > 0
+    ) {
+      segments.set(segment.id, segment);
+    }
+  });
+
+  return normalizeEntry({
+    ...newer,
+    createdAt:
+      compareDate(first.createdAt, second.createdAt) <= 0
+        ? first.createdAt
+        : second.createdAt,
+    tracked: first.tracked || second.tracked,
+    status: statusSource.status,
+    statusUpdatedAt: statusSource.statusUpdatedAt,
+    end: statusSource.end,
+    segments: [...segments.values()],
+  });
+}
+
 function normalizeEntry(entry) {
   const updatedAt = cleanText(entry.updatedAt || entry.createdAt) || now();
+  let segments = normalizeSegments(entry.segments);
+  const tracked = Boolean(entry.tracked || segments.length);
+  const allowedStatuses = new Set(["active", "paused", "completed"]);
+  let status = allowedStatuses.has(entry.status)
+    ? entry.status
+    : segments.some((segment) => !segment.endAt)
+      ? "active"
+      : "completed";
+  const statusUpdatedAt =
+    cleanTimestamp(entry.statusUpdatedAt) || cleanTimestamp(updatedAt) || now();
+
+  if (tracked && status !== "active") {
+    segments = segments.map((segment) => {
+      if (segment.endAt) return segment;
+      const safeEnd =
+        compareDate(statusUpdatedAt, segment.startAt) >= 0
+          ? statusUpdatedAt
+          : segment.startAt;
+      return { ...segment, endAt: safeEnd, updatedAt: safeEnd };
+    });
+  }
+  if (tracked && status === "active" && !segments.some((segment) => !segment.endAt)) {
+    status = "paused";
+  }
+
   return {
     id: cleanText(entry.id),
     date: cleanText(entry.date),
@@ -212,11 +288,96 @@ function normalizeEntry(entry) {
     description: cleanText(entry.description),
     notes: cleanText(entry.notes),
     start: cleanText(entry.start),
-    end: cleanText(entry.end),
+    end: tracked && status !== "completed" ? "" : cleanText(entry.end),
     createdAt: cleanText(entry.createdAt) || updatedAt,
     updatedAt,
     syncVersion: cleanText(entry.syncVersion),
+    tracked,
+    status,
+    statusUpdatedAt,
+    segments,
   };
+}
+
+function normalizeSegments(segments) {
+  if (!Array.isArray(segments)) return [];
+  return segments
+    .map((segment, index) => {
+      const startAt = cleanTimestamp(segment?.startAt);
+      const endAt = cleanTimestamp(segment?.endAt);
+      if (!startAt) return null;
+      return {
+        id: cleanText(segment.id) || `segment-${startAt}-${index}`,
+        startAt,
+        endAt: endAt && compareDate(endAt, startAt) >= 0 ? endAt : "",
+        updatedAt:
+          cleanTimestamp(segment.updatedAt) || endAt || startAt,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => compareDate(a.startAt, b.startAt));
+}
+
+function normalizeTrackingSettings(settings) {
+  return {
+    allowSimultaneous: Boolean(settings?.allowSimultaneous),
+    updatedAt: cleanTimestamp(settings?.updatedAt),
+  };
+}
+
+function mergeTrackingSettings(first, second) {
+  first = normalizeTrackingSettings(first);
+  second = normalizeTrackingSettings(second);
+  return compareDate(second.updatedAt, first.updatedAt) > 0 ? second : first;
+}
+
+function enforceTrackingPolicy(store) {
+  store.trackingSettings = normalizeTrackingSettings(store.trackingSettings);
+  if (store.trackingSettings.allowSimultaneous) return;
+
+  const active = store.entries
+    .filter((entry) => entry.tracked && entry.status === "active")
+    .sort(
+      (a, b) =>
+        compareDate(
+          b.statusUpdatedAt || b.updatedAt,
+          a.statusUpdatedAt || a.updatedAt,
+        ) || cleanText(b.id).localeCompare(cleanText(a.id)),
+    );
+  if (active.length < 2) return;
+
+  const winner = active[0];
+  const pauseAt =
+    cleanTimestamp(winner.statusUpdatedAt || winner.updatedAt) || now();
+  const activeIds = new Set(active.slice(1).map((entry) => entry.id));
+  store.entries = store.entries.map((entry) => {
+    if (!activeIds.has(entry.id)) return entry;
+    return pauseEntry(entry, pauseAt);
+  });
+}
+
+function pauseEntry(entry, pauseAt) {
+  const segments = normalizeSegments(entry.segments);
+  const openIndex = segments.findLastIndex((segment) => !segment.endAt);
+  if (openIndex >= 0) {
+    const safeEnd =
+      compareDate(pauseAt, segments[openIndex].startAt) >= 0
+        ? pauseAt
+        : segments[openIndex].startAt;
+    segments[openIndex] = {
+      ...segments[openIndex],
+      endAt: safeEnd,
+      updatedAt: safeEnd,
+    };
+  }
+  return normalizeEntry({
+    ...entry,
+    status: "paused",
+    statusUpdatedAt: pauseAt,
+    updatedAt: pauseAt,
+    end: "",
+    segments,
+  });
 }
 
 function normalizeTombstone(item) {
@@ -276,6 +437,13 @@ function compareDate(a, b) {
   return cleanText(a).localeCompare(cleanText(b));
 }
 
+function cleanTimestamp(value) {
+  const text = cleanText(value);
+  if (!text) return "";
+  const date = new Date(text);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+}
+
 function uniqueTasks(tasks) {
   return [
     ...new Set(tasks.map((task) => cleanText(task).toUpperCase()).filter(Boolean)),
@@ -292,6 +460,7 @@ function emptyStore() {
     deletedEntries: [],
     customTasks: [],
     deletedTasks: [],
+    trackingSettings: normalizeTrackingSettings({}),
     updatedAt: "",
   };
 }

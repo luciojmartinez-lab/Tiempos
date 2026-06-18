@@ -3,7 +3,8 @@ const CUSTOM_TASKS_KEY = "tiempos.customTasks.100v2";
 const DELETED_TASKS_KEY = "tiempos.deletedTasks.100v3";
 const DELETED_ENTRIES_KEY = "tiempos.deletedEntries.100v11";
 const SYNC_SETTINGS_KEY = "tiempos.syncSettings.100v11";
-const APP_VERSION = "100v23";
+const TRACKING_SETTINGS_KEY = "tiempos.trackingSettings.100v24";
+const APP_VERSION = "100v24";
 const ALL_YEARS_VALUE = "all";
 const SYNC_ENDPOINT = "/api/sync";
 const BULK_MIGRATION_LIMIT = 5;
@@ -98,6 +99,7 @@ const state = {
   deletedTasks: loadDeletedTasks(),
   deletedEntries: loadDeletedEntries(),
   sync: loadSyncSettings(),
+  tracking: loadTrackingSettings(),
   editingId: null,
   search: "",
   dateFilter: "",
@@ -116,11 +118,14 @@ function init() {
   buildTaskControls();
   bindEvents();
   setSyncFormValues();
+  setTrackingFormValues();
   setTodayIfEmpty();
   updateDateFilterState();
   updateSyncStatus();
   render();
   setInitialView();
+  startLiveUpdates();
+  startAutoSyncHeartbeat();
   scheduleAutoSync(1000);
   registerServiceWorker();
   checkForAppUpdate();
@@ -143,6 +148,7 @@ function bindElements() {
     syncReplace: document.getElementById("sync-replace"),
     syncAuto: document.getElementById("sync-auto"),
     syncStatus: document.getElementById("sync-status"),
+    allowSimultaneous: document.getElementById("allow-simultaneous"),
     entryPanel: document.querySelector(".entry-panel"),
     openEntry: document.getElementById("open-entry-modal"),
     closeEntry: document.getElementById("close-entry-modal"),
@@ -156,6 +162,7 @@ function bindElements() {
     end: document.getElementById("entry-end"),
     timeNowButtons: document.querySelectorAll("[data-time-now]"),
     timePickerButtons: document.querySelectorAll("[data-time-picker]"),
+    startTracking: document.getElementById("start-tracking"),
     save: document.getElementById("save-entry"),
     clear: document.getElementById("clear-form"),
     remove: document.getElementById("delete-entry"),
@@ -175,6 +182,8 @@ function bindElements() {
     statTotal: document.getElementById("stat-total"),
     statDays: document.getElementById("stat-days"),
     statEntries: document.getElementById("stat-entries"),
+    trackingSummary: document.getElementById("tracking-summary"),
+    runningTasks: document.getElementById("running-tasks"),
     chartTotal: document.getElementById("chart-total"),
     chartTopTask: document.getElementById("chart-top-task"),
     chartYearFilter: document.getElementById("chart-year-filter"),
@@ -244,6 +253,7 @@ function bindEvents() {
     updateSyncStatus();
     scheduleAutoSync(800);
   });
+  els.allowSimultaneous.addEventListener("change", updateTrackingSettings);
   els.newTaskInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
@@ -257,7 +267,9 @@ function bindEvents() {
   });
   els.clear.addEventListener("click", resetForm);
   els.remove.addEventListener("click", deleteCurrent);
+  els.startTracking.addEventListener("click", startTrackingFromForm);
   els.form.addEventListener("submit", saveCurrent);
+  els.runningTasks.addEventListener("click", handleTrackingAction);
   els.timeNowButtons.forEach((button) => {
     button.addEventListener("click", () => setTimeToNow(button.dataset.timeNow));
   });
@@ -380,6 +392,27 @@ function setSyncFormValues() {
   els.syncAuto.checked = Boolean(state.sync.auto);
 }
 
+function setTrackingFormValues() {
+  els.allowSimultaneous.checked = Boolean(state.tracking.allowSimultaneous);
+}
+
+function updateTrackingSettings() {
+  state.tracking.allowSimultaneous = els.allowSimultaneous.checked;
+  state.tracking.updatedAt = new Date().toISOString();
+
+  if (!state.tracking.allowSimultaneous) {
+    const active = getTrackedEntries("active").sort((a, b) =>
+      compareDate(b.statusUpdatedAt || b.updatedAt, a.statusUpdatedAt || a.updatedAt),
+    );
+    pauseOtherActiveEntries(new Date(), active[0]?.id || "");
+  }
+
+  persistTrackingSettings();
+  persist();
+  render();
+  scheduleAutoSync(500);
+}
+
 function saveSyncSettingsFromForm() {
   state.sync.key = cleanText(els.syncKey.value);
   els.syncKey.value = state.sync.key;
@@ -420,11 +453,35 @@ function updateSyncStatus(message, type = "") {
 
 let syncTimer = null;
 let syncInProgress = false;
+let liveTimer = null;
+let syncHeartbeat = null;
+let lastLiveMinute = -1;
 
 function scheduleAutoSync(delay = 0) {
   window.clearTimeout(syncTimer);
   if (!state.sync.auto || !state.sync.key || !navigator.onLine) return;
   syncTimer = window.setTimeout(() => syncNow({ silent: true }), delay);
+}
+
+function startAutoSyncHeartbeat() {
+  window.clearInterval(syncHeartbeat);
+  syncHeartbeat = window.setInterval(() => {
+    if (!document.hidden) scheduleAutoSync(0);
+  }, 30000);
+}
+
+function startLiveUpdates() {
+  window.clearInterval(liveTimer);
+  liveTimer = window.setInterval(() => {
+    renderRunningTasks();
+    const minute = new Date().getMinutes();
+    if (minute !== lastLiveMinute && getTrackedEntries("active").length) {
+      lastLiveMinute = minute;
+      renderStats();
+      renderEntries();
+      renderCharts();
+    }
+  }, 1000);
 }
 
 async function syncNow({ silent } = { silent: false }) {
@@ -500,6 +557,7 @@ async function runSync({ mode, silent }) {
     state.sync.lastSyncedAt = data.syncedAt || new Date().toISOString();
     saveSyncSettings();
     setSyncFormValues();
+    setTrackingFormValues();
     buildTaskControls();
     resetForm();
     render();
@@ -554,6 +612,7 @@ function buildSyncPayload(mode = "merge") {
     deletedEntries: state.deletedEntries.map(normalizeTombstone),
     customTasks: state.customTasks,
     deletedTasks: state.deletedTasks,
+    trackingSettings: state.tracking,
   };
 }
 
@@ -567,7 +626,12 @@ function applySyncedData(data) {
     .filter((item) => item.id);
   state.customTasks = uniqueTasks(data.customTasks || []);
   state.deletedTasks = uniqueTasks(data.deletedTasks || []);
+  state.tracking = normalizeTrackingSettings(
+    data.trackingSettings || state.tracking,
+  );
+  const adjustedTracking = enforceSingleActiveTask();
   persistAll();
+  if (adjustedTracking) scheduleAutoSync(1000);
 }
 
 function uniqueTasks(tasks) {
@@ -683,18 +747,23 @@ function saveCurrent(event) {
   const previous = state.editingId
     ? state.entries.find((item) => item.id === state.editingId)
     : null;
+  const tracked = Boolean(previous?.tracked);
 
   const entry = {
     id: state.editingId || createId(),
-    date: els.date.value || todayISO(),
+    date: tracked ? previous.date : els.date.value || todayISO(),
     task: els.task.value,
     description: els.description.value.trim(),
     notes: els.notes.value.trim(),
-    start: els.start.value,
-    end: els.end.value,
+    start: tracked ? previous.start : els.start.value,
+    end: tracked ? previous.end : els.end.value,
     createdAt: previous?.createdAt || savedAt,
     updatedAt: savedAt,
     syncVersion: APP_VERSION,
+    tracked,
+    status: tracked ? previous.status : "completed",
+    statusUpdatedAt: tracked ? previous.statusUpdatedAt : savedAt,
+    segments: tracked ? previous.segments : [],
   };
 
   if (state.editingId) {
@@ -712,6 +781,180 @@ function saveCurrent(event) {
   render();
   scheduleAutoSync(800);
   closeEntryModalOnMobile();
+}
+
+function startTrackingFromForm() {
+  const task = cleanText(els.task.value).toUpperCase();
+  if (!task) return;
+
+  const now = new Date();
+  const nowIso = now.toISOString();
+  if (!state.tracking.allowSimultaneous) {
+    pauseOtherActiveEntries(now);
+  }
+
+  const entry = normalizeEntry({
+    id: createId(),
+    date: toISODate(now),
+    task,
+    description: els.description.value.trim(),
+    notes: els.notes.value.trim(),
+    start: formatTimeFromDate(now),
+    end: "",
+    createdAt: nowIso,
+    updatedAt: nowIso,
+    statusUpdatedAt: nowIso,
+    syncVersion: APP_VERSION,
+    tracked: true,
+    status: "active",
+    segments: [
+      {
+        id: createId(),
+        startAt: nowIso,
+        endAt: "",
+        updatedAt: nowIso,
+      },
+    ],
+  });
+
+  state.entries.push(entry);
+  state.deletedEntries = state.deletedEntries.filter((item) => item.id !== entry.id);
+  persist();
+  persistDeletedEntries();
+  resetForm();
+  render();
+  scheduleAutoSync(300);
+  closeEntryModalOnMobile();
+}
+
+function handleTrackingAction(event) {
+  const button = event.target.closest("[data-tracking-action]");
+  if (!button) return;
+
+  const id = button.dataset.id;
+  const action = button.dataset.trackingAction;
+  if (action === "pause") pauseTrackedEntry(id);
+  if (action === "resume") resumeTrackedEntry(id);
+  if (action === "finish") finishTrackedEntry(id);
+  if (action === "edit") editEntry(id, { openModal: true });
+}
+
+function pauseTrackedEntry(id) {
+  const entry = state.entries.find((item) => item.id === id);
+  if (!entry || entry.status !== "active") return;
+  pauseEntryAt(entry, new Date());
+  finishTrackingMutation();
+}
+
+function resumeTrackedEntry(id) {
+  const entry = state.entries.find((item) => item.id === id);
+  if (!entry || entry.status !== "paused") return;
+
+  const now = new Date();
+  const nowIso = now.toISOString();
+  if (!state.tracking.allowSimultaneous) {
+    pauseOtherActiveEntries(now, entry.id);
+  }
+
+  entry.segments = [
+    ...normalizeSegments(entry.segments),
+    {
+      id: createId(),
+      startAt: nowIso,
+      endAt: "",
+      updatedAt: nowIso,
+    },
+  ];
+  entry.status = "active";
+  entry.statusUpdatedAt = nowIso;
+  entry.updatedAt = nowIso;
+  entry.end = "";
+  finishTrackingMutation();
+}
+
+function finishTrackedEntry(id) {
+  const entry = state.entries.find((item) => item.id === id);
+  if (!entry || !entry.tracked || entry.status === "completed") return;
+
+  const now = new Date();
+  if (entry.status === "active") closeLatestOpenSegment(entry, now);
+  const lastEnd = getLastSegmentEnd(entry);
+  const nowIso = now.toISOString();
+  entry.status = "completed";
+  entry.statusUpdatedAt = nowIso;
+  entry.updatedAt = nowIso;
+  entry.end = lastEnd ? formatTimeFromDate(new Date(lastEnd)) : formatTimeFromDate(now);
+  finishTrackingMutation();
+}
+
+function pauseOtherActiveEntries(at, exceptId = "") {
+  state.entries.forEach((entry) => {
+    if (entry.id !== exceptId && entry.tracked && entry.status === "active") {
+      pauseEntryAt(entry, at);
+    }
+  });
+}
+
+function pauseEntryAt(entry, at) {
+  closeLatestOpenSegment(entry, at);
+  const timestamp = at.toISOString();
+  entry.status = "paused";
+  entry.statusUpdatedAt = timestamp;
+  entry.updatedAt = timestamp;
+  entry.end = "";
+}
+
+function closeLatestOpenSegment(entry, at) {
+  const segments = normalizeSegments(entry.segments);
+  const openIndex = segments.findLastIndex((segment) => !segment.endAt);
+  if (openIndex < 0) {
+    entry.segments = segments;
+    return;
+  }
+
+  const startAt = new Date(segments[openIndex].startAt);
+  const endAt = at < startAt ? startAt : at;
+  segments[openIndex] = {
+    ...segments[openIndex],
+    endAt: endAt.toISOString(),
+    updatedAt: endAt.toISOString(),
+  };
+  entry.segments = segments;
+}
+
+function getLastSegmentEnd(entry) {
+  return normalizeSegments(entry.segments)
+    .map((segment) => segment.endAt)
+    .filter(Boolean)
+    .sort()
+    .at(-1) || "";
+}
+
+function getTrackedEntries(status = "") {
+  return state.entries.filter(
+    (entry) => entry.tracked && (!status || entry.status === status),
+  );
+}
+
+function enforceSingleActiveTask() {
+  if (state.tracking.allowSimultaneous) return false;
+  const active = getTrackedEntries("active").sort((a, b) =>
+    compareDate(b.statusUpdatedAt || b.updatedAt, a.statusUpdatedAt || a.updatedAt),
+  );
+  if (active.length < 2) return false;
+
+  const winnerDate = new Date(active[0].statusUpdatedAt || active[0].updatedAt);
+  pauseOtherActiveEntries(
+    Number.isNaN(winnerDate.getTime()) ? new Date() : winnerDate,
+    active[0].id,
+  );
+  return true;
+}
+
+function finishTrackingMutation() {
+  persist();
+  render();
+  scheduleAutoSync(300);
 }
 
 function deleteCurrent() {
@@ -745,6 +988,17 @@ function editEntry(id, options = {}) {
   els.start.value = entry.start || "";
   els.end.value = entry.end || "";
   els.save.textContent = "Actualizar";
+  const lockTimes = Boolean(entry.tracked);
+  els.date.disabled = lockTimes;
+  els.start.disabled = lockTimes;
+  els.end.disabled = lockTimes;
+  els.timeNowButtons.forEach((button) => {
+    button.disabled = lockTimes;
+  });
+  els.timePickerButtons.forEach((button) => {
+    button.disabled = lockTimes;
+  });
+  els.startTracking.disabled = Boolean(state.editingId);
   updateTaskButtonState();
   highlightEditingEntry();
   if (options.openModal) openEntryModal();
@@ -756,6 +1010,16 @@ function resetForm() {
   els.date.value = todayISO();
   els.task.value = getTaskList()[0] || TASKS[0];
   els.save.textContent = "Guardar";
+  els.date.disabled = false;
+  els.start.disabled = false;
+  els.end.disabled = false;
+  els.timeNowButtons.forEach((button) => {
+    button.disabled = false;
+  });
+  els.timePickerButtons.forEach((button) => {
+    button.disabled = false;
+  });
+  els.startTracking.disabled = false;
   updateTaskButtonState();
   renderEntries();
 }
@@ -804,6 +1068,7 @@ function updateDateFilterState() {
 function render() {
   renderDataFilterOptions();
   renderStats();
+  renderRunningTasks();
   renderEntries();
   renderCharts();
 }
@@ -811,6 +1076,65 @@ function render() {
 function renderFilteredData() {
   renderStats();
   renderEntries();
+}
+
+function renderRunningTasks() {
+  const entries = getTrackedEntries()
+    .filter((entry) => entry.status === "active" || entry.status === "paused")
+    .sort((a, b) => {
+      if (a.status !== b.status) return a.status === "active" ? -1 : 1;
+      return compareDate(
+        b.statusUpdatedAt || b.updatedAt,
+        a.statusUpdatedAt || a.updatedAt,
+      );
+    });
+  const activeCount = entries.filter((entry) => entry.status === "active").length;
+  const pausedCount = entries.length - activeCount;
+
+  els.trackingSummary.textContent = entries.length
+    ? `${activeCount} activa${activeCount === 1 ? "" : "s"} · ${pausedCount} pausada${
+        pausedCount === 1 ? "" : "s"
+      }`
+    : "Sin tareas";
+
+  if (!entries.length) {
+    els.runningTasks.innerHTML =
+      '<p class="tracking-empty">No hay tareas activas o pausadas.</p>';
+    return;
+  }
+
+  els.runningTasks.innerHTML = entries
+    .map((entry) => {
+      const active = entry.status === "active";
+      const segments = normalizeSegments(entry.segments);
+      return `<article class="running-task ${active ? "active" : "paused"}">
+        <div class="running-task-main">
+          <span class="running-task-title">
+            <strong>${escapeHtml(entry.task)}</strong>
+            <small>${active ? "Activa" : "Pausada"}</small>
+          </span>
+          <span class="running-task-description">${escapeHtml(
+            entry.description || "Sin descripcion",
+          )}</span>
+        </div>
+        <div class="running-task-time">
+          <strong>${formatRunningDuration(computeEntryMilliseconds(entry))}</strong>
+          <small>${segments.length} tramo${segments.length === 1 ? "" : "s"}</small>
+        </div>
+        <div class="running-task-actions">
+          <button class="ghost" type="button" data-tracking-action="${
+            active ? "pause" : "resume"
+          }" data-id="${escapeAttr(entry.id)}">${active ? "Pausar" : "Reanudar"}</button>
+          <button class="ghost" type="button" data-tracking-action="edit" data-id="${escapeAttr(
+            entry.id,
+          )}">Editar</button>
+          <button class="btn finish-task" type="button" data-tracking-action="finish" data-id="${escapeAttr(
+            entry.id,
+          )}">Finalizar</button>
+        </div>
+      </article>`;
+    })
+    .join("");
 }
 
 function renderDataFilterOptions() {
@@ -869,11 +1193,17 @@ function renderEntries() {
 
   els.body.innerHTML = rows
     .map(
-      (row) => `<tr class="${row.id === state.editingId ? "selected" : ""}" data-id="${
-        row.id
-      }">
+      (row) => `<tr class="${row.id === state.editingId ? "selected" : ""} ${
+        row.status === "active" ? "tracking-active-row" : ""
+      } ${row.status === "paused" ? "tracking-paused-row" : ""}" data-id="${row.id}">
         <td>${formatDate(row.date)}</td>
-        <td>${escapeHtml(row.task)}</td>
+        <td class="task-cell">${escapeHtml(row.task)}${
+          row.status === "active"
+            ? '<span class="row-status active">Activa</span>'
+            : row.status === "paused"
+              ? '<span class="row-status paused">Pausa</span>'
+              : ""
+        }</td>
         <td>${escapeHtml(row.description)}</td>
         <td>${escapeHtml(row.notes)}</td>
         <td class="num">${escapeHtml(row.start)}</td>
@@ -899,7 +1229,13 @@ function renderEntries() {
         row.id === state.editingId ? "selected" : ""
       }" type="button" data-id="${row.id}">
         <span class="entry-card-head">
-          <strong>${formatDate(row.date)} - ${escapeHtml(row.task)}</strong>
+          <strong>${formatDate(row.date)} - ${escapeHtml(row.task)}${
+            row.status === "active"
+              ? " · Activa"
+              : row.status === "paused"
+                ? " · Pausa"
+                : ""
+          }</strong>
           <small>${row.partialMinutes ? minutesToDuration(row.partialMinutes) : ""}</small>
         </span>
         <span>${escapeHtml(row.description || "-")}</span>
@@ -1060,7 +1396,7 @@ function computeRows() {
   const rows = state.entries
     .map((entry) => ({
       ...entry,
-      partialMinutes: computePartial(entry.start, entry.end),
+      partialMinutes: computeEntryMinutes(entry),
     }))
     .sort(compareEntries);
 
@@ -1149,6 +1485,29 @@ function compareEntries(a, b) {
   );
 }
 
+function compareDate(a, b) {
+  return cleanText(a).localeCompare(cleanText(b));
+}
+
+function computeEntryMinutes(entry) {
+  return Math.round(computeEntryMilliseconds(entry) / 60000);
+}
+
+function computeEntryMilliseconds(entry) {
+  const segments = normalizeSegments(entry.segments);
+  if (!segments.length) {
+    return computePartial(entry.start, entry.end) * 60000;
+  }
+
+  const now = Date.now();
+  return segments.reduce((sum, segment) => {
+    const start = new Date(segment.startAt).getTime();
+    const end = segment.endAt ? new Date(segment.endAt).getTime() : now;
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return sum;
+    return sum + (end - start);
+  }, 0);
+}
+
 function computePartial(start, end) {
   const startMinutes = timeToMinutes(start);
   const endMinutes = timeToMinutes(end);
@@ -1170,6 +1529,14 @@ function minutesToDuration(minutes) {
   const hours = Math.floor(safe / 60);
   const mins = String(safe % 60).padStart(2, "0");
   return `${hours}:${mins}`;
+}
+
+function formatRunningDuration(milliseconds) {
+  const safe = Math.max(0, Math.floor(milliseconds / 1000));
+  const hours = Math.floor(safe / 3600);
+  const minutes = String(Math.floor((safe % 3600) / 60)).padStart(2, "0");
+  const seconds = String(safe % 60).padStart(2, "0");
+  return `${hours}:${minutes}:${seconds}`;
 }
 
 function dateDiffDays(start, end) {
@@ -1204,6 +1571,12 @@ function nowTime() {
   ).padStart(2, "0")}`;
 }
 
+function formatTimeFromDate(date) {
+  return `${String(date.getHours()).padStart(2, "0")}:${String(
+    date.getMinutes(),
+  ).padStart(2, "0")}`;
+}
+
 function toISODate(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
     2,
@@ -1222,22 +1595,101 @@ function createId() {
   return `id-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function normalizeSegments(segments) {
+  if (!Array.isArray(segments)) return [];
+  return segments
+    .map((segment, index) => {
+      const startAt = normalizeTimestamp(segment?.startAt);
+      const endAt = normalizeTimestamp(segment?.endAt);
+      if (!startAt) return null;
+      return {
+        id: cleanText(segment.id) || `segment-${startAt}-${index}`,
+        startAt,
+        endAt: endAt && compareDate(endAt, startAt) >= 0 ? endAt : "",
+        updatedAt:
+          normalizeTimestamp(segment.updatedAt) || endAt || startAt,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => compareDate(a.startAt, b.startAt));
+}
+
 function normalizeEntry(entry, fallbackDate = new Date().toISOString()) {
-  const updatedAt = entry.updatedAt || entry.createdAt || fallbackDate;
+  const updatedAt =
+    normalizeTimestamp(entry.updatedAt || entry.createdAt) || fallbackDate;
+  let segments = normalizeSegments(entry.segments);
+  const tracked = Boolean(entry.tracked || segments.length);
+  const allowedStatuses = new Set(["active", "paused", "completed"]);
+  let status = allowedStatuses.has(entry.status)
+    ? entry.status
+    : segments.some((segment) => !segment.endAt)
+      ? "active"
+      : "completed";
+  const statusUpdatedAt =
+    normalizeTimestamp(entry.statusUpdatedAt) || updatedAt;
+
+  if (tracked && status !== "active") {
+    segments = segments.map((segment) => {
+      if (segment.endAt) return segment;
+      const safeEnd =
+        compareDate(statusUpdatedAt, segment.startAt) >= 0
+          ? statusUpdatedAt
+          : segment.startAt;
+      return { ...segment, endAt: safeEnd, updatedAt: safeEnd };
+    });
+  }
+  if (tracked && status === "active" && !segments.some((segment) => !segment.endAt)) {
+    status = "paused";
+  }
+
+  const firstStart = segments[0]?.startAt || "";
+  const lastEnd = segments
+    .map((segment) => segment.endAt)
+    .filter(Boolean)
+    .sort()
+    .at(-1) || "";
+  const firstDate = firstStart ? new Date(firstStart) : null;
+  const finalDate = lastEnd ? new Date(lastEnd) : null;
+  const rawDate = parseDate(entry.date || entry.FECHA || entry.Fecha);
+  const rawStart = parseTime(entry.start || entry["TIEMPO INICIO"] || entry.inicio);
+  const rawEnd = parseTime(entry.end || entry["TIEMPO FINAL"] || entry.final);
+
   return {
     id: entry.id || createId(),
-    date: parseDate(entry.date || entry.FECHA || entry.Fecha),
+    date:
+      tracked && firstDate && !Number.isNaN(firstDate.getTime())
+        ? toISODate(firstDate)
+        : rawDate,
     task: cleanText(entry.task || entry.TAREA || entry.Tarea).toUpperCase(),
     description: cleanText(
       entry.description || entry.DESCRIPCION || entry.Descripcion,
     ),
     notes: cleanText(entry.notes || entry.Notas || entry.NOTAS),
-    start: parseTime(entry.start || entry["TIEMPO INICIO"] || entry.inicio),
-    end: parseTime(entry.end || entry["TIEMPO FINAL"] || entry.final),
-    createdAt: entry.createdAt || updatedAt,
+    start:
+      tracked && firstDate && !Number.isNaN(firstDate.getTime())
+        ? formatTimeFromDate(firstDate)
+        : rawStart,
+    end:
+      tracked && status === "completed" && finalDate && !Number.isNaN(finalDate.getTime())
+        ? formatTimeFromDate(finalDate)
+        : tracked
+          ? ""
+          : rawEnd,
+    createdAt: normalizeTimestamp(entry.createdAt) || updatedAt,
     updatedAt,
     syncVersion: cleanText(entry.syncVersion),
+    tracked,
+    status,
+    statusUpdatedAt,
+    segments,
   };
+}
+
+function normalizeTimestamp(value) {
+  const text = cleanText(value);
+  if (!text) return "";
+  const date = new Date(text);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
 }
 
 function normalizeTombstone(item, fallbackDate = new Date().toISOString()) {
@@ -1353,6 +1805,23 @@ function loadSyncSettings() {
   return { key: "", auto: false, lastSyncedAt: "" };
 }
 
+function normalizeTrackingSettings(settings) {
+  return {
+    allowSimultaneous: Boolean(settings?.allowSimultaneous),
+    updatedAt: normalizeTimestamp(settings?.updatedAt),
+  };
+}
+
+function loadTrackingSettings() {
+  try {
+    const saved = localStorage.getItem(TRACKING_SETTINGS_KEY);
+    if (saved) return normalizeTrackingSettings(JSON.parse(saved));
+  } catch {
+    localStorage.removeItem(TRACKING_SETTINGS_KEY);
+  }
+  return normalizeTrackingSettings({});
+}
+
 function persist() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state.entries));
 }
@@ -1373,11 +1842,16 @@ function saveSyncSettings() {
   localStorage.setItem(SYNC_SETTINGS_KEY, JSON.stringify(state.sync));
 }
 
+function persistTrackingSettings() {
+  localStorage.setItem(TRACKING_SETTINGS_KEY, JSON.stringify(state.tracking));
+}
+
 function persistAll() {
   persist();
   persistCustomTasks();
   persistDeletedTasks();
   persistDeletedEntries();
+  persistTrackingSettings();
 }
 
 async function handleFileLoad() {
@@ -1411,6 +1885,11 @@ async function handleFileLoad() {
     if (Array.isArray(backupData?.deletedTasks)) {
       state.deletedTasks = uniqueTasks(backupData.deletedTasks);
       persistDeletedTasks();
+    }
+    if (backupData?.trackingSettings) {
+      state.tracking = normalizeTrackingSettings(backupData.trackingSettings);
+      persistTrackingSettings();
+      setTrackingFormValues();
     }
     persist();
     persistDeletedEntries();
@@ -1451,6 +1930,9 @@ function rowsToEntries(rows) {
     notes: findHeader(headers, ["notas"]),
     start: findHeader(headers, ["tiempo inicio", "inicio"]),
     end: findHeader(headers, ["tiempo final", "final"]),
+    status: findHeader(headers, ["estado"]),
+    tracked: findHeader(headers, ["seguimiento"]),
+    segments: findHeader(headers, ["tramos"]),
   };
 
   return rows
@@ -1464,9 +1946,22 @@ function rowsToEntries(rows) {
         notes: row[index.notes],
         start: row[index.start],
         end: row[index.end],
+        status: row[index.status],
+        tracked: /^(1|true|si)$/i.test(cleanText(row[index.tracked])),
+        segments: parseSegmentsCell(row[index.segments]),
       }),
     )
     .filter((entry) => entry.date && entry.task);
+}
+
+function parseSegmentsCell(value) {
+  const text = cleanText(value);
+  if (!text) return [];
+  try {
+    return normalizeSegments(JSON.parse(text));
+  } catch {
+    return [];
+  }
 }
 
 function normalizeImportedEntries(input) {
@@ -1580,6 +2075,9 @@ function exportCsv() {
     "Notas",
     "TIEMPO INICIO",
     "TIEMPO FINAL",
+    "ESTADO",
+    "SEGUIMIENTO",
+    "TRAMOS",
   ];
   const rows = state.entries
     .slice()
@@ -1592,6 +2090,9 @@ function exportCsv() {
         entry.notes,
         entry.start,
         entry.end,
+        entry.status,
+        entry.tracked ? "SI" : "",
+        entry.tracked ? JSON.stringify(normalizeSegments(entry.segments)) : "",
       ].map(csvCell),
     );
   downloadText(
@@ -1610,6 +2111,7 @@ function exportJson() {
         deletedEntries: state.deletedEntries,
         customTasks: state.customTasks,
         deletedTasks: state.deletedTasks,
+        trackingSettings: state.tracking,
       },
       null,
       2,

@@ -10,12 +10,12 @@
     <meta name="apple-mobile-web-app-title" content="Tiempos" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
-    <link rel="stylesheet" href="/styles.css?v=100v23" />
+    <link rel="stylesheet" href="/styles.css?v=100v24" />
     <script
       defer
       src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"
     ></script>
-    <script defer src="/app.js?v=100v23"></script>
+    <script defer src="/app.js?v=100v24"></script>
   </head>
   <body>
     <header class="top-navbar">
@@ -26,7 +26,7 @@
             ><span class="live-indicator"></span> Control de trabajo</span
           >
         </div>
-        <span class="version-badge">100v23</span>
+        <span class="version-badge">100v24</span>
       </div>
       <nav class="navbar-row-menu" aria-label="Hojas">
         <button class="nav-item active" type="button" data-view="datos">
@@ -75,6 +75,14 @@
             <span>Registros</span>
             <strong id="stat-entries">0</strong>
           </article>
+        </section>
+
+        <section class="tracking-panel" aria-label="Tareas en curso">
+          <div class="tracking-head">
+            <h2>En curso</h2>
+            <span id="tracking-summary">Sin tareas</span>
+          </div>
+          <div class="running-tasks" id="running-tasks"></div>
         </section>
 
         <button
@@ -166,6 +174,13 @@
               </label>
             </div>
             <div class="form-actions">
+              <button
+                class="btn tracking-start"
+                type="button"
+                id="start-tracking"
+              >
+                Iniciar
+              </button>
               <button class="btn" type="submit" id="save-entry">Guardar</button>
               <button class="ghost" type="button" id="clear-form">Nuevo</button>
               <button class="ghost danger" type="button" id="delete-entry">
@@ -305,6 +320,13 @@
               </details>
             </div>
             <div class="sync-status" id="sync-status"></div>
+          </div>
+          <div class="config-block">
+            <span class="ribbon-title">Seguimiento</span>
+            <label class="tracking-setting">
+              <input type="checkbox" id="allow-simultaneous" />
+              <span>Permitir varias tareas activas</span>
+            </label>
           </div>
           <div class="config-block">
             <span class="ribbon-title">Tareas</span>
