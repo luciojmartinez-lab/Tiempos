@@ -4,7 +4,8 @@ const DELETED_TASKS_KEY = "tiempos.deletedTasks.100v3";
 const DELETED_ENTRIES_KEY = "tiempos.deletedEntries.100v11";
 const SYNC_SETTINGS_KEY = "tiempos.syncSettings.100v11";
 const TRACKING_SETTINGS_KEY = "tiempos.trackingSettings.100v24";
-const APP_VERSION = "100v24";
+const ENTRY_DRAFT_KEY = "tiempos.entryDraft.100v25";
+const APP_VERSION = "100v25";
 const ALL_YEARS_VALUE = "all";
 const SYNC_ENDPOINT = "/api/sync";
 const BULK_MIGRATION_LIMIT = 5;
@@ -120,6 +121,7 @@ function init() {
   setSyncFormValues();
   setTrackingFormValues();
   setTodayIfEmpty();
+  restoreSavedEntryDraft();
   updateDateFilterState();
   updateSyncStatus();
   render();
@@ -236,6 +238,7 @@ function bindEvents() {
     if (!button) return;
     els.task.value = button.dataset.task;
     updateTaskButtonState();
+    persistEntryDraft();
   });
 
   els.task.addEventListener("change", updateTaskButtonState);
@@ -269,6 +272,8 @@ function bindEvents() {
   els.remove.addEventListener("click", deleteCurrent);
   els.startTracking.addEventListener("click", startTrackingFromForm);
   els.form.addEventListener("submit", saveCurrent);
+  els.form.addEventListener("input", persistEntryDraft);
+  els.form.addEventListener("change", persistEntryDraft);
   els.runningTasks.addEventListener("click", handleTrackingAction);
   els.timeNowButtons.forEach((button) => {
     button.addEventListener("click", () => setTimeToNow(button.dataset.timeNow));
@@ -553,13 +558,15 @@ async function runSync({ mode, silent }) {
       return;
     }
 
+    const entryDraft = captureEntryDraft();
+    saveEntryDraft(entryDraft);
     applySyncedData(data);
     state.sync.lastSyncedAt = data.syncedAt || new Date().toISOString();
     saveSyncSettings();
     setSyncFormValues();
     setTrackingFormValues();
     buildTaskControls();
-    resetForm();
+    restoreEntryDraft(entryDraft);
     render();
     updateSyncStatus(
       mode === "replace"
@@ -653,11 +660,13 @@ function startNewEntryFromButton() {
 function openEntryModal() {
   els.entryPanel.classList.add("modal-open");
   document.body.classList.add("entry-modal-open");
+  persistEntryDraft();
 }
 
 function closeEntryModal() {
   els.entryPanel.classList.remove("modal-open");
   document.body.classList.remove("entry-modal-open");
+  persistEntryDraft();
 }
 
 function closeEntryModalOnMobile() {
@@ -988,7 +997,26 @@ function editEntry(id, options = {}) {
   els.start.value = entry.start || "";
   els.end.value = entry.end || "";
   els.save.textContent = "Actualizar";
-  const lockTimes = Boolean(entry.tracked);
+  setEntryFormLock(Boolean(entry.tracked), true);
+  updateTaskButtonState();
+  highlightEditingEntry();
+  if (options.openModal) openEntryModal();
+  persistEntryDraft();
+}
+
+function resetForm() {
+  state.editingId = null;
+  els.form.reset();
+  els.date.value = todayISO();
+  els.task.value = getTaskList()[0] || TASKS[0];
+  els.save.textContent = "Guardar";
+  setEntryFormLock(false, false);
+  clearEntryDraft();
+  updateTaskButtonState();
+  renderEntries();
+}
+
+function setEntryFormLock(lockTimes, editing) {
   els.date.disabled = lockTimes;
   els.start.disabled = lockTimes;
   els.end.disabled = lockTimes;
@@ -998,30 +1026,114 @@ function editEntry(id, options = {}) {
   els.timePickerButtons.forEach((button) => {
     button.disabled = lockTimes;
   });
-  els.startTracking.disabled = Boolean(state.editingId);
-  updateTaskButtonState();
-  highlightEditingEntry();
-  if (options.openModal) openEntryModal();
+  els.startTracking.disabled = editing;
 }
 
-function resetForm() {
-  state.editingId = null;
-  els.form.reset();
-  els.date.value = todayISO();
-  els.task.value = getTaskList()[0] || TASKS[0];
-  els.save.textContent = "Guardar";
-  els.date.disabled = false;
-  els.start.disabled = false;
-  els.end.disabled = false;
-  els.timeNowButtons.forEach((button) => {
-    button.disabled = false;
-  });
-  els.timePickerButtons.forEach((button) => {
-    button.disabled = false;
-  });
-  els.startTracking.disabled = false;
+function captureEntryDraft() {
+  const activeElement = document.activeElement;
+  const focusId =
+    activeElement && els.form.contains(activeElement) ? activeElement.id : "";
+  let selectionStart = null;
+  let selectionEnd = null;
+
+  if (focusId) {
+    try {
+      selectionStart = activeElement.selectionStart;
+      selectionEnd = activeElement.selectionEnd;
+    } catch {
+      // Los campos de fecha y hora no exponen seleccion de texto.
+    }
+  }
+
+  return {
+    editingId: state.editingId || "",
+    date: els.date.value,
+    task: els.task.value,
+    description: els.description.value,
+    notes: els.notes.value,
+    start: els.start.value,
+    end: els.end.value,
+    lockTimes: els.date.disabled,
+    modalOpen: els.entryPanel.classList.contains("modal-open"),
+    focusId,
+    selectionStart,
+    selectionEnd,
+  };
+}
+
+function restoreEntryDraft(draft) {
+  if (!draft) return;
+
+  const editingExists = Boolean(
+    draft.editingId && state.entries.some((entry) => entry.id === draft.editingId),
+  );
+  state.editingId = editingExists ? draft.editingId : null;
+
+  if (
+    draft.task &&
+    !Array.from(els.task.options).some((option) => option.value === draft.task)
+  ) {
+    els.task.add(new Option(draft.task, draft.task));
+  }
+
+  els.date.value = draft.date || todayISO();
+  els.task.value = draft.task || getTaskList()[0] || TASKS[0];
+  els.description.value = draft.description || "";
+  els.notes.value = draft.notes || "";
+  els.start.value = draft.start || "";
+  els.end.value = draft.end || "";
+  els.save.textContent = editingExists ? "Actualizar" : "Guardar";
+  setEntryFormLock(editingExists && Boolean(draft.lockTimes), editingExists);
+  els.entryPanel.classList.toggle("modal-open", Boolean(draft.modalOpen));
+  document.body.classList.toggle("entry-modal-open", Boolean(draft.modalOpen));
   updateTaskButtonState();
-  renderEntries();
+
+  if (!draft.focusId) return;
+  window.requestAnimationFrame(() => {
+    const field = document.getElementById(draft.focusId);
+    if (!field || field.disabled) return;
+    field.focus();
+    if (
+      typeof draft.selectionStart === "number" &&
+      typeof draft.selectionEnd === "number" &&
+      typeof field.setSelectionRange === "function"
+    ) {
+      try {
+        field.setSelectionRange(draft.selectionStart, draft.selectionEnd);
+      } catch {
+        // Algunos controles nativos no permiten colocar el cursor.
+      }
+    }
+  });
+}
+
+function persistEntryDraft() {
+  saveEntryDraft(captureEntryDraft());
+}
+
+function saveEntryDraft(draft) {
+  try {
+    sessionStorage.setItem(ENTRY_DRAFT_KEY, JSON.stringify(draft));
+  } catch {
+    // La entrada sigue funcionando aunque el navegador bloquee sessionStorage.
+  }
+}
+
+function restoreSavedEntryDraft() {
+  try {
+    const saved = sessionStorage.getItem(ENTRY_DRAFT_KEY);
+    if (saved) restoreEntryDraft(JSON.parse(saved));
+  } catch {
+    clearEntryDraft();
+  }
+}
+
+function clearEntryDraft() {
+  try {
+    sessionStorage.removeItem(ENTRY_DRAFT_KEY);
+  } catch {
+    // No hay nada que limpiar si sessionStorage no esta disponible.
+  }
 }
 
 function setTodayIfEmpty() {
@@ -1035,6 +1147,7 @@ function setTimeToNow(fieldId) {
   if (!field) return;
   field.value = nowTime();
   field.focus();
+  persistEntryDraft();
 }
 
 function openTimePicker(fieldId) {
