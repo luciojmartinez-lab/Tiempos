@@ -319,14 +319,14 @@ body[data-active-view="configuracion"] .ribbon {
 
 .running-tasks {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
 .running-task {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(150px, 1fr) 86px auto;
+  grid-template-columns: minmax(0, 1fr) 86px;
   align-items: center;
   gap: 10px;
   border: 1px solid var(--line);
@@ -399,13 +399,15 @@ body[data-active-view="configuracion"] .ribbon {
 }
 
 .running-task-actions {
+  grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: repeat(3, auto);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 5px;
 }
 
 .running-task-actions .btn,
 .running-task-actions .ghost {
+  width: 100%;
   min-height: 30px;
   padding: 5px 8px;
   font-size: 11px;

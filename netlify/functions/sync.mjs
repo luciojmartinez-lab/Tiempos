@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { getStore } from "@netlify/blobs";
 
 const STORE_NAME = "tiempos-sync";
-const SYNC_VERSION = "100v25";
+const SYNC_VERSION = "100v26";
 const BULK_MIGRATION_LIMIT = 5;
 const LEGACY_UPDATED_AT = "2000-01-01T00:00:00.000Z";
 
@@ -288,7 +288,7 @@ function normalizeEntry(entry) {
     description: cleanText(entry.description),
     notes: cleanText(entry.notes),
     start: cleanText(entry.start),
-    end: tracked && status !== "completed" ? "" : cleanText(entry.end),
+    end: tracked && status === "active" ? "" : cleanText(entry.end),
     createdAt: cleanText(entry.createdAt) || updatedAt,
     updatedAt,
     syncVersion: cleanText(entry.syncVersion),

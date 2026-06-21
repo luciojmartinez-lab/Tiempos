@@ -5,7 +5,7 @@ const DELETED_ENTRIES_KEY = "tiempos.deletedEntries.100v11";
 const SYNC_SETTINGS_KEY = "tiempos.syncSettings.100v11";
 const TRACKING_SETTINGS_KEY = "tiempos.trackingSettings.100v24";
 const ENTRY_DRAFT_KEY = "tiempos.entryDraft.100v25";
-const APP_VERSION = "100v25";
+const APP_VERSION = "100v26";
 const ALL_YEARS_VALUE = "all";
 const SYNC_ENDPOINT = "/api/sync";
 const BULK_MIGRATION_LIMIT = 5;
@@ -758,22 +758,25 @@ function saveCurrent(event) {
     : null;
   const tracked = Boolean(previous?.tracked);
 
-  const entry = {
-    id: state.editingId || createId(),
-    date: tracked ? previous.date : els.date.value || todayISO(),
-    task: els.task.value,
-    description: els.description.value.trim(),
-    notes: els.notes.value.trim(),
-    start: tracked ? previous.start : els.start.value,
-    end: tracked ? previous.end : els.end.value,
-    createdAt: previous?.createdAt || savedAt,
-    updatedAt: savedAt,
-    syncVersion: APP_VERSION,
-    tracked,
-    status: tracked ? previous.status : "completed",
-    statusUpdatedAt: tracked ? previous.statusUpdatedAt : savedAt,
-    segments: tracked ? previous.segments : [],
-  };
+  const entry = tracked
+    ? buildTrackedEntryFromForm(previous, savedAt)
+    : {
+        id: state.editingId || createId(),
+        date: els.date.value || todayISO(),
+        task: els.task.value,
+        description: els.description.value.trim(),
+        notes: els.notes.value.trim(),
+        start: els.start.value,
+        end: els.end.value,
+        createdAt: previous?.createdAt || savedAt,
+        updatedAt: savedAt,
+        syncVersion: APP_VERSION,
+        tracked: false,
+        status: "completed",
+        statusUpdatedAt: savedAt,
+        segments: [],
+      };
+  if (!entry) return;
 
   if (state.editingId) {
     state.entries = state.entries.map((item) =>
@@ -790,6 +793,132 @@ function saveCurrent(event) {
   render();
   scheduleAutoSync(800);
   closeEntryModalOnMobile();
+}
+
+function buildTrackedEntryFromForm(previous, savedAt) {
+  let segments = normalizeSegments(previous.segments);
+  if (!segments.length) return null;
+
+  const nextDate = els.date.value || previous.date || todayISO();
+  const nextStart = els.start.value || previous.start;
+  const previousEnd = getEditableEnd(previous);
+  const nextEnd = els.end.value;
+  const dateChanged = nextDate !== previous.date;
+  const startChanged = nextStart !== previous.start;
+  const endChanged = nextEnd !== previousEnd;
+  const temporalChanged = dateChanged || startChanged || endChanged;
+
+  if (dateChanged) {
+    const dayDelta = dateDiffDays(previous.date, nextDate);
+    segments = shiftSegmentsByDays(segments, dayDelta, savedAt);
+  }
+
+  if (startChanged) {
+    const firstStart = new Date(segments[0].startAt);
+    const desiredStart = localDateTime(nextDate, nextStart);
+    if (!desiredStart) {
+      alert("La hora de inicio no es valida.");
+      return null;
+    }
+    segments = shiftSegmentsByMilliseconds(
+      segments,
+      desiredStart.getTime() - firstStart.getTime(),
+      savedAt,
+    );
+  }
+
+  let status = previous.status;
+  if (endChanged) {
+    if (!nextEnd && status !== "active") {
+      alert("La tarea necesita una hora final.");
+      return null;
+    }
+    if (nextEnd) {
+      segments = updateLastSegmentEnd(segments, nextEnd, savedAt);
+      if (!segments) {
+        alert("La hora final no es valida.");
+        return null;
+      }
+      if (status === "active") status = "completed";
+    }
+  }
+
+  return normalizeEntry({
+    ...previous,
+    task: els.task.value,
+    description: els.description.value.trim(),
+    notes: els.notes.value.trim(),
+    date: nextDate,
+    start: nextStart,
+    end: status === "active" ? "" : nextEnd || previousEnd,
+    status,
+    statusUpdatedAt: temporalChanged ? savedAt : previous.statusUpdatedAt,
+    updatedAt: savedAt,
+    syncVersion: APP_VERSION,
+    segments,
+  });
+}
+
+function shiftSegmentsByDays(segments, days, updatedAt) {
+  if (!days) return segments;
+  return segments.map((segment) => ({
+    ...segment,
+    startAt: shiftTimestampByDays(segment.startAt, days),
+    endAt: segment.endAt ? shiftTimestampByDays(segment.endAt, days) : "",
+    updatedAt,
+  }));
+}
+
+function shiftTimestampByDays(timestamp, days) {
+  const date = new Date(timestamp);
+  date.setDate(date.getDate() + days);
+  return date.toISOString();
+}
+
+function shiftSegmentsByMilliseconds(segments, milliseconds, updatedAt) {
+  if (!milliseconds) return segments;
+  return segments.map((segment) => ({
+    ...segment,
+    startAt: new Date(new Date(segment.startAt).getTime() + milliseconds).toISOString(),
+    endAt: segment.endAt
+      ? new Date(new Date(segment.endAt).getTime() + milliseconds).toISOString()
+      : "",
+    updatedAt,
+  }));
+}
+
+function updateLastSegmentEnd(segments, time, updatedAt) {
+  const lastIndex = segments.length - 1;
+  const segment = segments[lastIndex];
+  const segmentStart = new Date(segment.startAt);
+  const reference = new Date(segment.endAt || segment.startAt);
+  const candidate = localDateTime(toISODate(reference), time);
+  if (!candidate) return null;
+  if (candidate < segmentStart) candidate.setDate(candidate.getDate() + 1);
+
+  const updated = segments.slice();
+  updated[lastIndex] = {
+    ...segment,
+    endAt: candidate.toISOString(),
+    updatedAt,
+  };
+  return updated;
+}
+
+function localDateTime(dateValue, timeValue) {
+  const dateMatch = cleanText(dateValue).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const timeMatch = cleanText(timeValue).match(/^(\d{1,2}):(\d{2})$/);
+  if (!dateMatch || !timeMatch) return null;
+  const date = new Date(
+    Number(dateMatch[1]),
+    Number(dateMatch[2]) - 1,
+    Number(dateMatch[3]),
+    Number(timeMatch[1]),
+    Number(timeMatch[2]),
+    0,
+    0,
+  );
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function startTrackingFromForm() {
@@ -910,7 +1039,7 @@ function pauseEntryAt(entry, at) {
   entry.status = "paused";
   entry.statusUpdatedAt = timestamp;
   entry.updatedAt = timestamp;
-  entry.end = "";
+  entry.end = formatTimeFromDate(at);
 }
 
 function closeLatestOpenSegment(entry, at) {
@@ -937,6 +1066,13 @@ function getLastSegmentEnd(entry) {
     .filter(Boolean)
     .sort()
     .at(-1) || "";
+}
+
+function getEditableEnd(entry) {
+  if (!entry?.tracked) return entry?.end || "";
+  if (entry.status === "active") return "";
+  const lastEnd = getLastSegmentEnd(entry);
+  return lastEnd ? formatTimeFromDate(new Date(lastEnd)) : entry.end || "";
 }
 
 function getTrackedEntries(status = "") {
@@ -995,9 +1131,9 @@ function editEntry(id, options = {}) {
   els.description.value = entry.description || "";
   els.notes.value = entry.notes || "";
   els.start.value = entry.start || "";
-  els.end.value = entry.end || "";
+  els.end.value = getEditableEnd(entry);
   els.save.textContent = "Actualizar";
-  setEntryFormLock(Boolean(entry.tracked), true);
+  setEntryFormLock(false, true);
   updateTaskButtonState();
   highlightEditingEntry();
   if (options.openModal) openEntryModal();
@@ -1783,7 +1919,7 @@ function normalizeEntry(entry, fallbackDate = new Date().toISOString()) {
         ? formatTimeFromDate(firstDate)
         : rawStart,
     end:
-      tracked && status === "completed" && finalDate && !Number.isNaN(finalDate.getTime())
+      tracked && status !== "active" && finalDate && !Number.isNaN(finalDate.getTime())
         ? formatTimeFromDate(finalDate)
         : tracked
           ? ""
