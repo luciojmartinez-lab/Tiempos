@@ -28,6 +28,7 @@ const legacyOvernight = context.normalizeEntry({
 assert.equal(legacyOvernight.startDate, "2026-08-20");
 assert.equal(legacyOvernight.endDate, "2026-08-21");
 assert.equal(context.computeEntryMinutes(legacyOvernight), 120);
+assert.equal(context.manualEntryToSegmentDraft(legacyOvernight).length, 1);
 
 const tracked = context.normalizeEntry({
   id: "tracked",
@@ -107,6 +108,46 @@ const edited = context.readEditedSegments(
 assert.equal(edited.segments.length, 3);
 assert.equal(edited.hasOpenSegment, false);
 assert.equal(edited.segments[0].updatedAt, "2026-08-20T10:00:00.000Z");
+
+context.testList.querySelectorAll = () => [
+  segmentRow("original", "2026-08-22", "09:00", "2026-08-22", "10:00"),
+  segmentRow("continued", "2026-08-22", "12:00", "", ""),
+];
+context.testList.querySelector = (selector) =>
+  selector === ".segment-row.is-new" ? {} : null;
+const continued = context.readEditedSegments(
+  "2026-08-22T12:00:00.000Z",
+  "completed",
+  [],
+  true,
+);
+assert.equal(continued.hasOpenSegment, true);
+assert.equal(continued.segments.at(-1).endAt, "");
+
+context.testFields = {
+  date: { value: "2026-08-22" },
+  start: { value: "09:00" },
+  endDate: { value: "" },
+  end: { value: "" },
+  task: { value: "UNI" },
+  description: { value: "Continuada" },
+  notes: { value: "" },
+};
+vm.runInContext("Object.assign(els, testFields)", context);
+const convertedAndContinued = context.buildTrackedEntryFromForm(
+  context.normalizeEntry({
+    id: "manual-to-tracked",
+    date: "2026-08-22",
+    task: "UNI",
+    start: "09:00",
+    end: "10:00",
+    status: "completed",
+  }),
+  "2026-08-22T12:00:00.000Z",
+);
+assert.equal(convertedAndContinued.tracked, true);
+assert.equal(convertedAndContinued.status, "active");
+assert.equal(convertedAndContinued.segments.length, 2);
 
 context.testList.querySelectorAll = () => [
   segmentRow("one", "2026-08-20", "09:00", "2026-08-20", "11:00"),

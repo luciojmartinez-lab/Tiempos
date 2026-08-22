@@ -5,7 +5,7 @@ const DELETED_ENTRIES_KEY = "tiempos.deletedEntries.100v11";
 const SYNC_SETTINGS_KEY = "tiempos.syncSettings.100v11";
 const TRACKING_SETTINGS_KEY = "tiempos.trackingSettings.100v24";
 const ENTRY_DRAFT_KEY = "tiempos.entryDraft.100v25";
-const APP_VERSION = "100v28";
+const APP_VERSION = "100v29";
 const TRACKING_ACTION_LOCK_MS = 850;
 const ALL_YEARS_VALUE = "all";
 const SYNC_ENDPOINT = "/api/sync";
@@ -801,12 +801,24 @@ function saveCurrent(event) {
   const previous = state.editingId
     ? state.entries.find((item) => item.id === state.editingId)
     : null;
-  const tracked = Boolean(previous?.tracked);
+  const hasNewSegment = Boolean(
+    previous && els.segmentsList.querySelector(".segment-row.is-new"),
+  );
+  const tracked = Boolean(previous?.tracked || hasNewSegment);
 
   const entry = tracked
     ? buildTrackedEntryFromForm(previous, savedAt)
     : buildManualEntryFromForm(previous, savedAt);
   if (!entry) return;
+
+  if (
+    entry.tracked &&
+    entry.status === "active" &&
+    previous?.status !== "active" &&
+    !state.tracking.allowSimultaneous
+  ) {
+    pauseOtherActiveEntries(new Date(), entry.id);
+  }
 
   if (state.editingId) {
     state.entries = state.entries.map((item) =>
@@ -867,15 +879,25 @@ function buildManualEntryFromForm(previous, savedAt) {
 
 function buildTrackedEntryFromForm(previous, savedAt) {
   syncMainDatesToSegmentEditor();
-  const result = readEditedSegments(savedAt, previous.status, previous.segments);
+  const allowOpenLast =
+    previous.status === "active" ||
+    Boolean(els.segmentsList.querySelector(".segment-row.is-new"));
+  const result = readEditedSegments(
+    savedAt,
+    previous.status,
+    previous.segments,
+    allowOpenLast,
+  );
   if (!result) return null;
   const segments = result.segments;
   const firstStart = new Date(segments[0].startAt);
   const lastEndAt = segments.at(-1).endAt;
   const lastEnd = lastEndAt ? new Date(lastEndAt) : null;
-  const status = previous.status === "active" && !result.hasOpenSegment
-    ? "completed"
-    : previous.status;
+  const status = result.hasOpenSegment
+    ? "active"
+    : previous.status === "active"
+      ? "completed"
+      : previous.status;
   const temporalShape = (items) => items.map(({ id, startAt, endAt }) => ({
     id,
     startAt,
@@ -903,7 +925,12 @@ function buildTrackedEntryFromForm(previous, savedAt) {
   });
 }
 
-function readEditedSegments(savedAt, status, previousSegments = []) {
+function readEditedSegments(
+  savedAt,
+  status,
+  previousSegments = [],
+  allowOpenLast = status === "active",
+) {
   const rows = [...els.segmentsList.querySelectorAll(".segment-row")];
   if (!rows.length) return null;
 
@@ -926,7 +953,7 @@ function readEditedSegments(savedAt, status, previousSegments = []) {
     if (hasAnyEnd && !hasCompleteEnd) {
       return showSegmentsError(`Completa la fecha y la hora final del tramo ${index + 1}.`);
     }
-    if (!hasAnyEnd && (status !== "active" || index !== rows.length - 1)) {
+    if (!hasAnyEnd && (!allowOpenLast || index !== rows.length - 1)) {
       return showSegmentsError(`El tramo ${index + 1} necesita fecha y hora final.`);
     }
     if (endAt && endAt < startAt) {
@@ -986,8 +1013,11 @@ function localDateTime(dateValue, timeValue) {
 }
 
 function renderSegmentEditor(entry, draftSegments = null) {
-  const segments = draftSegments || normalizeSegments(entry?.segments);
-  const visible = Boolean(entry?.tracked && segments.length);
+  const storedSegments = normalizeSegments(entry?.segments);
+  const segments = draftSegments || (
+    storedSegments.length ? storedSegments : manualEntryToSegmentDraft(entry)
+  );
+  const visible = Boolean(entry);
   els.segmentsEditor.hidden = !visible;
   els.segmentsError.textContent = "";
   if (!visible) {
@@ -1011,6 +1041,23 @@ function renderSegmentEditor(entry, draftSegments = null) {
       </div>`;
     })
     .join("");
+}
+
+function manualEntryToSegmentDraft(entry) {
+  if (!entry || !entry.start || !entry.end) return [];
+  const startDate = entry.startDate || entry.date;
+  const endDate = entry.endDate || startDate;
+  const startAt = localDateTime(startDate, entry.start);
+  const endAt = localDateTime(endDate, entry.end);
+  if (!startAt || !endAt || endAt < startAt) return [];
+  return [{
+    id: `manual-${entry.id}`,
+    isNew: false,
+    startDate,
+    startTime: entry.start,
+    endDate,
+    endTime: entry.end,
+  }];
 }
 
 function segmentToFormValues(segment) {
@@ -1038,7 +1085,7 @@ function captureSegmentDraft() {
 
 function addSegmentToEditor() {
   const entry = state.entries.find((item) => item.id === state.editingId);
-  if (!entry?.tracked) return;
+  if (!entry) return;
   if (entry.status === "active") {
     alert("Pausa la ocupacion antes de añadir un tramo manual.");
     return;
@@ -1053,8 +1100,8 @@ function addSegmentToEditor() {
     isNew: true,
     startDate: date,
     startTime: time,
-    endDate: date,
-    endTime: time,
+    endDate: "",
+    endTime: "",
   });
   renderSegmentEditor(entry, draft);
   syncMainDatesFromSegmentRows();
@@ -1727,7 +1774,9 @@ function renderEntries() {
     .join("") + totalRow;
 
   els.body.querySelectorAll("tr[data-id]").forEach((row) => {
-    row.addEventListener("click", () => editEntry(row.dataset.id));
+    row.addEventListener("click", () =>
+      editEntry(row.dataset.id, { openModal: isMobileLayout() }),
+    );
     row.addEventListener("dblclick", () =>
       editEntry(row.dataset.id, { openModal: true }),
     );
@@ -1757,7 +1806,9 @@ function renderEntries() {
     .join("");
 
   els.mobileList.querySelectorAll(".entry-card").forEach((card) => {
-    card.addEventListener("click", () => editEntry(card.dataset.id));
+    card.addEventListener("click", () =>
+      editEntry(card.dataset.id, { openModal: isMobileLayout() }),
+    );
     card.addEventListener("dblclick", () =>
       editEntry(card.dataset.id, { openModal: true }),
     );
