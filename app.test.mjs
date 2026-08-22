@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
 
+const storageData = new Map();
 const context = vm.createContext({
   console,
   Date,
@@ -10,9 +11,9 @@ const context = vm.createContext({
   document: { addEventListener() {} },
   window: { setTimeout() {} },
   localStorage: {
-    getItem() { return null; },
-    setItem() {},
-    removeItem() {},
+    getItem(key) { return storageData.get(key) ?? null; },
+    setItem(key, value) { storageData.set(key, value); },
+    removeItem(key) { storageData.delete(key); },
   },
 });
 vm.runInContext(fs.readFileSync(new URL("./app.js", import.meta.url), "utf8"), context);
@@ -51,6 +52,23 @@ assert.equal(tracked.startDate, context.toISODate(new Date(tracked.segments[0].s
 assert.equal(tracked.endDate, context.toISODate(new Date(tracked.segments[1].endAt)));
 assert.equal(context.computeEntryMinutes(tracked), 120);
 
+const activeAfterRestart = context.normalizeEntry(JSON.parse(JSON.stringify({
+  id: "active-restart",
+  date: "2026-08-22",
+  task: "UNI",
+  tracked: true,
+  status: "active",
+  updatedAt: "2026-08-22T09:00:00.000Z",
+  statusUpdatedAt: "2026-08-22T09:00:00.000Z",
+  segments: [{
+    id: "open",
+    startAt: "2026-08-22T09:00:00.000Z",
+    endAt: "",
+  }],
+})));
+assert.equal(activeAfterRestart.status, "active");
+assert.equal(activeAfterRestart.segments[0].endAt, "");
+
 function segmentRow(id, startDate, startTime, endDate, endTime) {
   const values = { "start-date": startDate, "start-time": startTime, "end-date": endDate, "end-time": endTime };
   return {
@@ -68,6 +86,7 @@ context.testList = {
     return [
       segmentRow("one", "2026-08-20", "09:00", "2026-08-20", "10:00"),
       segmentRow("two", "2026-08-20", "10:30", "2026-08-21", "11:00"),
+      segmentRow("new", "2026-08-21", "12:00", "2026-08-21", "13:00"),
     ];
   },
 };
@@ -85,7 +104,7 @@ const edited = context.readEditedSegments(
     updatedAt: "2026-08-20T10:00:00.000Z",
   }],
 );
-assert.equal(edited.segments.length, 2);
+assert.equal(edited.segments.length, 3);
 assert.equal(edited.hasOpenSegment, false);
 assert.equal(edited.segments[0].updatedAt, "2026-08-20T10:00:00.000Z");
 
@@ -127,5 +146,17 @@ context.handleTrackingAction(trackingEvent("pause"));
 context.handleTrackingAction(trackingEvent("resume"));
 assert.equal(vm.runInContext('state.entries[0].status', context), "paused");
 assert.equal(vm.runInContext('state.entries[0].segments.length', context), 1);
+
+context.saveEntryDraft({ editingId: "tracked", segmentDraft: [{ id: "new" }] });
+assert.equal(storageData.size > 0, true);
+assert.equal(
+  [...storageData.values()].some((value) => value.includes('"editingId":"tracked"')),
+  true,
+);
+context.clearEntryDraft();
+assert.equal(
+  [...storageData.values()].some((value) => value.includes('"editingId":"tracked"')),
+  false,
+);
 
 console.log("Pruebas de fechas y tramos superadas.");

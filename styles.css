@@ -528,6 +528,17 @@ select:focus {
   margin-bottom: 8px;
 }
 
+.segments-editor-head > span {
+  display: grid;
+  gap: 2px;
+}
+
+.add-segment {
+  flex: none;
+  min-height: 34px;
+  color: var(--primary);
+}
+
 .segments-editor-head small {
   color: var(--muted);
 }
@@ -546,6 +557,20 @@ select:focus {
   border: 1px solid var(--line);
   border-radius: 7px;
   background: #fff;
+}
+
+.segment-row.is-new {
+  border-color: #a8d5ba;
+  background: #f4fbf7;
+}
+
+.remove-new-segment {
+  grid-column: 1 / -1;
+  justify-self: end;
+  min-height: 28px;
+  padding: 4px 8px;
+  color: var(--danger);
+  font-size: 11px;
 }
 
 .segment-number {
@@ -1557,6 +1582,12 @@ th:nth-child(10) {
   .segments-editor-head {
     display: grid;
     gap: 2px;
+  }
+
+  .add-segment {
+    width: 100%;
+    min-height: 42px;
+    margin-top: 5px;
   }
 
   .segment-row {

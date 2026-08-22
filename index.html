@@ -10,12 +10,12 @@
     <meta name="apple-mobile-web-app-title" content="Tiempos" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
-    <link rel="stylesheet" href="/styles.css?v=100v27" />
+    <link rel="stylesheet" href="/styles.css?v=100v28" />
     <script
       defer
       src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"
     ></script>
-    <script defer src="/app.js?v=100v27"></script>
+    <script defer src="/app.js?v=100v28"></script>
   </head>
   <body>
     <header class="top-navbar">
@@ -26,7 +26,7 @@
             ><span class="live-indicator"></span> Control de trabajo</span
           >
         </div>
-        <span class="version-badge">100v27</span>
+        <span class="version-badge">100v28</span>
       </div>
       <nav class="navbar-row-menu" aria-label="Hojas">
         <button class="nav-item active" type="button" data-view="datos">
@@ -179,8 +179,13 @@
             </div>
             <section class="segments-editor" id="segments-editor" hidden>
               <div class="segments-editor-head">
-                <strong>Tramos de trabajo</strong>
-                <small>Edita la fecha y la hora de cada inicio y final.</small>
+                <span>
+                  <strong>Tramos de trabajo</strong>
+                  <small>Edita la fecha y la hora de cada inicio y final.</small>
+                </span>
+                <button class="ghost add-segment" type="button" id="add-segment">
+                  + Añadir tramo
+                </button>
               </div>
               <div class="segments-list" id="segments-list"></div>
               <p class="segments-error" id="segments-error" role="alert"></p>

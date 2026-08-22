@@ -5,7 +5,7 @@ const DELETED_ENTRIES_KEY = "tiempos.deletedEntries.100v11";
 const SYNC_SETTINGS_KEY = "tiempos.syncSettings.100v11";
 const TRACKING_SETTINGS_KEY = "tiempos.trackingSettings.100v24";
 const ENTRY_DRAFT_KEY = "tiempos.entryDraft.100v25";
-const APP_VERSION = "100v27";
+const APP_VERSION = "100v28";
 const TRACKING_ACTION_LOCK_MS = 850;
 const ALL_YEARS_VALUE = "all";
 const SYNC_ENDPOINT = "/api/sync";
@@ -168,6 +168,7 @@ function bindElements() {
     segmentsEditor: document.getElementById("segments-editor"),
     segmentsList: document.getElementById("segments-list"),
     segmentsError: document.getElementById("segments-error"),
+    addSegment: document.getElementById("add-segment"),
     timeNowButtons: document.querySelectorAll("[data-time-now]"),
     timePickerButtons: document.querySelectorAll("[data-time-picker]"),
     startTracking: document.getElementById("start-tracking"),
@@ -292,6 +293,8 @@ function bindEvents() {
   els.segmentsList.addEventListener("input", () => {
     els.segmentsError.textContent = "";
   });
+  els.addSegment.addEventListener("click", addSegmentToEditor);
+  els.segmentsList.addEventListener("click", removeNewSegmentFromEditor);
   els.runningTasks.addEventListener("click", handleTrackingAction);
   els.timeNowButtons.forEach((button) => {
     button.addEventListener("click", () => setTimeToNow(button.dataset.timeNow));
@@ -356,8 +359,31 @@ function bindEvents() {
   els.exportJson.addEventListener("click", exportJson);
   window.addEventListener("online", () => scheduleAutoSync(500));
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) scheduleAutoSync(500);
+    if (document.hidden) {
+      persistBeforeSuspension();
+    } else {
+      render();
+      scheduleAutoSync(500);
+    }
   });
+  document.addEventListener("freeze", persistBeforeSuspension);
+  window.addEventListener("pagehide", persistBeforeSuspension);
+  window.addEventListener("beforeunload", persistBeforeSuspension);
+  window.addEventListener("pageshow", () => {
+    render();
+    scheduleAutoSync(500);
+  });
+}
+
+function persistBeforeSuspension() {
+  try {
+    persist();
+    persistDeletedEntries();
+    persistTrackingSettings();
+    persistEntryDraft();
+  } catch {
+    // El sistema puede estar cerrando la pagina; el ultimo guardado sigue valido.
+  }
 }
 
 function setView(view) {
@@ -714,6 +740,7 @@ function registerServiceWorker() {
     }
 
     reloadingForUpdate = true;
+    persistBeforeSuspension();
     window.location.reload();
   });
 
@@ -973,12 +1000,14 @@ function renderSegmentEditor(entry, draftSegments = null) {
       const values = Object.hasOwn(segment, "startDate")
         ? segment
         : segmentToFormValues(segment);
-      return `<div class="segment-row" data-segment-id="${escapeAttr(segment.id)}">
+      const isNew = Boolean(values.isNew);
+      return `<div class="segment-row${isNew ? " is-new" : ""}" data-segment-id="${escapeAttr(segment.id)}">
         <span class="segment-number">Tramo ${index + 1}</span>
         <label><span>Fecha inicio</span><input type="date" data-segment-field="start-date" value="${escapeAttr(values.startDate)}" required></label>
         <label><span>Hora inicio</span><input type="time" data-segment-field="start-time" value="${escapeAttr(values.startTime)}" required></label>
         <label><span>Fecha final</span><input type="date" data-segment-field="end-date" value="${escapeAttr(values.endDate)}"></label>
         <label><span>Hora final</span><input type="time" data-segment-field="end-time" value="${escapeAttr(values.endTime)}"></label>
+        ${isNew ? '<button class="ghost remove-new-segment" type="button" data-remove-new-segment>Quitar tramo nuevo</button>' : ""}
       </div>`;
     })
     .join("");
@@ -999,11 +1028,70 @@ function segmentToFormValues(segment) {
 function captureSegmentDraft() {
   return [...els.segmentsList.querySelectorAll(".segment-row")].map((row) => ({
     id: row.dataset.segmentId,
+    isNew: row.classList.contains("is-new"),
     startDate: row.querySelector('[data-segment-field="start-date"]').value,
     startTime: row.querySelector('[data-segment-field="start-time"]').value,
     endDate: row.querySelector('[data-segment-field="end-date"]').value,
     endTime: row.querySelector('[data-segment-field="end-time"]').value,
   }));
+}
+
+function addSegmentToEditor() {
+  const entry = state.entries.find((item) => item.id === state.editingId);
+  if (!entry?.tracked) return;
+  if (entry.status === "active") {
+    alert("Pausa la ocupacion antes de añadir un tramo manual.");
+    return;
+  }
+
+  const now = new Date();
+  const date = toISODate(now);
+  const time = formatTimeFromDate(now);
+  const draft = captureSegmentDraft();
+  draft.push({
+    id: createId(),
+    isNew: true,
+    startDate: date,
+    startTime: time,
+    endDate: date,
+    endTime: time,
+  });
+  renderSegmentEditor(entry, draft);
+  syncMainDatesFromSegmentRows();
+  persistEntryDraft();
+  els.segmentsList.querySelector(".segment-row:last-child")?.scrollIntoView({
+    behavior: "smooth",
+    block: "nearest",
+  });
+}
+
+function removeNewSegmentFromEditor(event) {
+  const button = event.target.closest("[data-remove-new-segment]");
+  if (!button) return;
+  button.closest(".segment-row")?.remove();
+  renumberSegmentRows();
+  syncMainDatesFromSegmentRows();
+  persistEntryDraft();
+}
+
+function renumberSegmentRows() {
+  [...els.segmentsList.querySelectorAll(".segment-number")].forEach(
+    (label, index) => {
+      label.textContent = `Tramo ${index + 1}`;
+    },
+  );
+}
+
+function syncMainDatesFromSegmentRows() {
+  const rows = [...els.segmentsList.querySelectorAll(".segment-row")];
+  if (!rows.length) return;
+  const first = rows[0];
+  const last = rows.at(-1);
+  els.date.value = first.querySelector('[data-segment-field="start-date"]').value;
+  els.start.value = first.querySelector('[data-segment-field="start-time"]').value;
+  els.endDate.value = last.querySelector('[data-segment-field="end-date"]').value;
+  els.end.value = last.querySelector('[data-segment-field="end-time"]').value;
+  els.segmentsError.textContent = "";
 }
 
 function syncMainDatesToSegmentEditor() {
@@ -1396,16 +1484,31 @@ function persistEntryDraft() {
 
 function saveEntryDraft(draft) {
   try {
-    sessionStorage.setItem(ENTRY_DRAFT_KEY, JSON.stringify(draft));
+    localStorage.setItem(ENTRY_DRAFT_KEY, JSON.stringify(draft));
   } catch {
-    // La entrada sigue funcionando aunque el navegador bloquee sessionStorage.
+    // La entrada sigue funcionando aunque el navegador bloquee localStorage.
   }
 }
 
 function restoreSavedEntryDraft() {
+  let saved = "";
   try {
-    const saved = sessionStorage.getItem(ENTRY_DRAFT_KEY);
-    if (saved) restoreEntryDraft(JSON.parse(saved));
+    saved = localStorage.getItem(ENTRY_DRAFT_KEY) || "";
+  } catch {
+    // Se intentara recuperar la copia antigua de la sesion.
+  }
+  if (!saved) {
+    try {
+      saved = sessionStorage.getItem(ENTRY_DRAFT_KEY) || "";
+    } catch {
+      // No hay almacenamiento de sesion disponible.
+    }
+  }
+  if (!saved) return;
+  try {
+    const draft = JSON.parse(saved);
+    restoreEntryDraft(draft);
+    saveEntryDraft(draft);
   } catch {
     clearEntryDraft();
   }
@@ -1413,9 +1516,14 @@ function restoreSavedEntryDraft() {
 
 function clearEntryDraft() {
   try {
+    localStorage.removeItem(ENTRY_DRAFT_KEY);
+  } catch {
+    // No hay nada que limpiar si localStorage no esta disponible.
+  }
+  try {
     sessionStorage.removeItem(ENTRY_DRAFT_KEY);
   } catch {
-    // No hay nada que limpiar si sessionStorage no esta disponible.
+    // Limpieza compatible con los borradores de versiones anteriores.
   }
 }
 
