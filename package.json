@@ -1,8 +1,11 @@
 {
   "name": "tiempos",
-  "version": "100.26.0",
+  "version": "100.27.0",
   "private": true,
   "type": "module",
+  "scripts": {
+    "test": "node app.test.mjs"
+  },
   "dependencies": {
     "@netlify/blobs": "^9.1.0"
   }

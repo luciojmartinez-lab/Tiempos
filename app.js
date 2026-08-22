@@ -5,7 +5,8 @@ const DELETED_ENTRIES_KEY = "tiempos.deletedEntries.100v11";
 const SYNC_SETTINGS_KEY = "tiempos.syncSettings.100v11";
 const TRACKING_SETTINGS_KEY = "tiempos.trackingSettings.100v24";
 const ENTRY_DRAFT_KEY = "tiempos.entryDraft.100v25";
-const APP_VERSION = "100v26";
+const APP_VERSION = "100v27";
+const TRACKING_ACTION_LOCK_MS = 850;
 const ALL_YEARS_VALUE = "all";
 const SYNC_ENDPOINT = "/api/sync";
 const BULK_MIGRATION_LIMIT = 5;
@@ -111,6 +112,7 @@ const state = {
 };
 
 const els = {};
+const trackingActionLocks = new Map();
 
 document.addEventListener("DOMContentLoaded", init);
 
@@ -162,6 +164,10 @@ function bindElements() {
     notes: document.getElementById("entry-notes"),
     start: document.getElementById("entry-start"),
     end: document.getElementById("entry-end"),
+    endDate: document.getElementById("entry-end-date"),
+    segmentsEditor: document.getElementById("segments-editor"),
+    segmentsList: document.getElementById("segments-list"),
+    segmentsError: document.getElementById("segments-error"),
     timeNowButtons: document.querySelectorAll("[data-time-now]"),
     timePickerButtons: document.querySelectorAll("[data-time-picker]"),
     startTracking: document.getElementById("start-tracking"),
@@ -274,6 +280,18 @@ function bindEvents() {
   els.form.addEventListener("submit", saveCurrent);
   els.form.addEventListener("input", persistEntryDraft);
   els.form.addEventListener("change", persistEntryDraft);
+  [els.date, els.start, els.endDate, els.end].forEach((field) => {
+    field.addEventListener("change", syncMainDatesToSegmentEditor);
+  });
+  els.date.addEventListener("change", () => {
+    if (!state.editingId && !els.segmentsList.children.length) {
+      els.endDate.value = els.date.value;
+    }
+  });
+  els.segmentsList.addEventListener("change", syncMainDatesFromSegmentEditor);
+  els.segmentsList.addEventListener("input", () => {
+    els.segmentsError.textContent = "";
+  });
   els.runningTasks.addEventListener("click", handleTrackingAction);
   els.timeNowButtons.forEach((button) => {
     button.addEventListener("click", () => setTimeToNow(button.dataset.timeNow));
@@ -760,22 +778,7 @@ function saveCurrent(event) {
 
   const entry = tracked
     ? buildTrackedEntryFromForm(previous, savedAt)
-    : {
-        id: state.editingId || createId(),
-        date: els.date.value || todayISO(),
-        task: els.task.value,
-        description: els.description.value.trim(),
-        notes: els.notes.value.trim(),
-        start: els.start.value,
-        end: els.end.value,
-        createdAt: previous?.createdAt || savedAt,
-        updatedAt: savedAt,
-        syncVersion: APP_VERSION,
-        tracked: false,
-        status: "completed",
-        statusUpdatedAt: savedAt,
-        segments: [],
-      };
+    : buildManualEntryFromForm(previous, savedAt);
   if (!entry) return;
 
   if (state.editingId) {
@@ -795,62 +798,76 @@ function saveCurrent(event) {
   closeEntryModalOnMobile();
 }
 
+function buildManualEntryFromForm(previous, savedAt) {
+  const startDate = els.date.value || todayISO();
+  const endDate = els.endDate.value || startDate;
+  const startTime = els.start.value;
+  const endTime = els.end.value;
+
+  if ((startTime && !endTime) || (!startTime && endTime)) {
+    alert("Indica tanto la hora de inicio como la hora final.");
+    return null;
+  }
+
+  if (startTime && endTime) {
+    const startAt = localDateTime(startDate, startTime);
+    const endAt = localDateTime(endDate, endTime);
+    if (!startAt || !endAt || endAt < startAt) {
+      alert("La fecha y hora final no pueden ser anteriores al inicio.");
+      return null;
+    }
+  }
+
+  return normalizeEntry({
+    id: state.editingId || createId(),
+    date: startDate,
+    startDate,
+    endDate: endTime ? endDate : "",
+    task: els.task.value,
+    description: els.description.value.trim(),
+    notes: els.notes.value.trim(),
+    start: startTime,
+    end: endTime,
+    createdAt: previous?.createdAt || savedAt,
+    updatedAt: savedAt,
+    syncVersion: APP_VERSION,
+    tracked: false,
+    status: "completed",
+    statusUpdatedAt: savedAt,
+    segments: [],
+  });
+}
+
 function buildTrackedEntryFromForm(previous, savedAt) {
-  let segments = normalizeSegments(previous.segments);
-  if (!segments.length) return null;
-
-  const nextDate = els.date.value || previous.date || todayISO();
-  const nextStart = els.start.value || previous.start;
-  const previousEnd = getEditableEnd(previous);
-  const nextEnd = els.end.value;
-  const dateChanged = nextDate !== previous.date;
-  const startChanged = nextStart !== previous.start;
-  const endChanged = nextEnd !== previousEnd;
-  const temporalChanged = dateChanged || startChanged || endChanged;
-
-  if (dateChanged) {
-    const dayDelta = dateDiffDays(previous.date, nextDate);
-    segments = shiftSegmentsByDays(segments, dayDelta, savedAt);
-  }
-
-  if (startChanged) {
-    const firstStart = new Date(segments[0].startAt);
-    const desiredStart = localDateTime(nextDate, nextStart);
-    if (!desiredStart) {
-      alert("La hora de inicio no es valida.");
-      return null;
-    }
-    segments = shiftSegmentsByMilliseconds(
-      segments,
-      desiredStart.getTime() - firstStart.getTime(),
-      savedAt,
-    );
-  }
-
-  let status = previous.status;
-  if (endChanged) {
-    if (!nextEnd && status !== "active") {
-      alert("La tarea necesita una hora final.");
-      return null;
-    }
-    if (nextEnd) {
-      segments = updateLastSegmentEnd(segments, nextEnd, savedAt);
-      if (!segments) {
-        alert("La hora final no es valida.");
-        return null;
-      }
-      if (status === "active") status = "completed";
-    }
-  }
+  syncMainDatesToSegmentEditor();
+  const result = readEditedSegments(savedAt, previous.status, previous.segments);
+  if (!result) return null;
+  const segments = result.segments;
+  const firstStart = new Date(segments[0].startAt);
+  const lastEndAt = segments.at(-1).endAt;
+  const lastEnd = lastEndAt ? new Date(lastEndAt) : null;
+  const status = previous.status === "active" && !result.hasOpenSegment
+    ? "completed"
+    : previous.status;
+  const temporalShape = (items) => items.map(({ id, startAt, endAt }) => ({
+    id,
+    startAt,
+    endAt,
+  }));
+  const temporalChanged = JSON.stringify(temporalShape(segments)) !== JSON.stringify(
+    temporalShape(normalizeSegments(previous.segments)),
+  );
 
   return normalizeEntry({
     ...previous,
     task: els.task.value,
     description: els.description.value.trim(),
     notes: els.notes.value.trim(),
-    date: nextDate,
-    start: nextStart,
-    end: status === "active" ? "" : nextEnd || previousEnd,
+    date: toISODate(firstStart),
+    startDate: toISODate(firstStart),
+    endDate: lastEnd ? toISODate(lastEnd) : "",
+    start: formatTimeFromDate(firstStart),
+    end: status === "active" ? "" : lastEnd ? formatTimeFromDate(lastEnd) : "",
     status,
     statusUpdatedAt: temporalChanged ? savedAt : previous.statusUpdatedAt,
     updatedAt: savedAt,
@@ -859,50 +876,70 @@ function buildTrackedEntryFromForm(previous, savedAt) {
   });
 }
 
-function shiftSegmentsByDays(segments, days, updatedAt) {
-  if (!days) return segments;
-  return segments.map((segment) => ({
-    ...segment,
-    startAt: shiftTimestampByDays(segment.startAt, days),
-    endAt: segment.endAt ? shiftTimestampByDays(segment.endAt, days) : "",
-    updatedAt,
-  }));
-}
+function readEditedSegments(savedAt, status, previousSegments = []) {
+  const rows = [...els.segmentsList.querySelectorAll(".segment-row")];
+  if (!rows.length) return null;
 
-function shiftTimestampByDays(timestamp, days) {
-  const date = new Date(timestamp);
-  date.setDate(date.getDate() + days);
-  return date.toISOString();
-}
+  const previousById = new Map(
+    normalizeSegments(previousSegments).map((segment) => [segment.id, segment]),
+  );
+  const segments = [];
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
+    const startDate = row.querySelector('[data-segment-field="start-date"]').value;
+    const startTime = row.querySelector('[data-segment-field="start-time"]').value;
+    const endDate = row.querySelector('[data-segment-field="end-date"]').value;
+    const endTime = row.querySelector('[data-segment-field="end-time"]').value;
+    const startAt = localDateTime(startDate, startTime);
+    const hasAnyEnd = Boolean(endDate || endTime);
+    const hasCompleteEnd = Boolean(endDate && endTime);
+    const endAt = hasCompleteEnd ? localDateTime(endDate, endTime) : null;
 
-function shiftSegmentsByMilliseconds(segments, milliseconds, updatedAt) {
-  if (!milliseconds) return segments;
-  return segments.map((segment) => ({
-    ...segment,
-    startAt: new Date(new Date(segment.startAt).getTime() + milliseconds).toISOString(),
-    endAt: segment.endAt
-      ? new Date(new Date(segment.endAt).getTime() + milliseconds).toISOString()
-      : "",
-    updatedAt,
-  }));
-}
+    if (!startAt) return showSegmentsError(`Completa el inicio del tramo ${index + 1}.`);
+    if (hasAnyEnd && !hasCompleteEnd) {
+      return showSegmentsError(`Completa la fecha y la hora final del tramo ${index + 1}.`);
+    }
+    if (!hasAnyEnd && (status !== "active" || index !== rows.length - 1)) {
+      return showSegmentsError(`El tramo ${index + 1} necesita fecha y hora final.`);
+    }
+    if (endAt && endAt < startAt) {
+      return showSegmentsError(`El final del tramo ${index + 1} es anterior a su inicio.`);
+    }
 
-function updateLastSegmentEnd(segments, time, updatedAt) {
-  const lastIndex = segments.length - 1;
-  const segment = segments[lastIndex];
-  const segmentStart = new Date(segment.startAt);
-  const reference = new Date(segment.endAt || segment.startAt);
-  const candidate = localDateTime(toISODate(reference), time);
-  if (!candidate) return null;
-  if (candidate < segmentStart) candidate.setDate(candidate.getDate() + 1);
+    const id = row.dataset.segmentId || createId();
+    const startAtIso = startAt.toISOString();
+    const endAtIso = endAt ? endAt.toISOString() : "";
+    const previous = previousById.get(id);
+    segments.push({
+      id,
+      startAt: startAtIso,
+      endAt: endAtIso,
+      updatedAt:
+        previous?.startAt === startAtIso && previous?.endAt === endAtIso
+          ? previous.updatedAt
+          : savedAt,
+    });
+  }
 
-  const updated = segments.slice();
-  updated[lastIndex] = {
-    ...segment,
-    endAt: candidate.toISOString(),
-    updatedAt,
+  segments.sort((a, b) => compareDate(a.startAt, b.startAt));
+  for (let index = 1; index < segments.length; index += 1) {
+    const previous = segments[index - 1];
+    if (!previous.endAt || compareDate(segments[index].startAt, previous.endAt) < 0) {
+      return showSegmentsError("Los tramos no pueden solaparse ni quedar abiertos entre medias.");
+    }
+  }
+
+  els.segmentsError.textContent = "";
+  return {
+    segments,
+    hasOpenSegment: segments.some((segment) => !segment.endAt),
   };
-  return updated;
+}
+
+function showSegmentsError(message) {
+  els.segmentsError.textContent = message;
+  els.segmentsError.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  return null;
 }
 
 function localDateTime(dateValue, timeValue) {
@@ -921,6 +958,82 @@ function localDateTime(dateValue, timeValue) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+function renderSegmentEditor(entry, draftSegments = null) {
+  const segments = draftSegments || normalizeSegments(entry?.segments);
+  const visible = Boolean(entry?.tracked && segments.length);
+  els.segmentsEditor.hidden = !visible;
+  els.segmentsError.textContent = "";
+  if (!visible) {
+    els.segmentsList.innerHTML = "";
+    return;
+  }
+
+  els.segmentsList.innerHTML = segments
+    .map((segment, index) => {
+      const values = Object.hasOwn(segment, "startDate")
+        ? segment
+        : segmentToFormValues(segment);
+      return `<div class="segment-row" data-segment-id="${escapeAttr(segment.id)}">
+        <span class="segment-number">Tramo ${index + 1}</span>
+        <label><span>Fecha inicio</span><input type="date" data-segment-field="start-date" value="${escapeAttr(values.startDate)}" required></label>
+        <label><span>Hora inicio</span><input type="time" data-segment-field="start-time" value="${escapeAttr(values.startTime)}" required></label>
+        <label><span>Fecha final</span><input type="date" data-segment-field="end-date" value="${escapeAttr(values.endDate)}"></label>
+        <label><span>Hora final</span><input type="time" data-segment-field="end-time" value="${escapeAttr(values.endTime)}"></label>
+      </div>`;
+    })
+    .join("");
+}
+
+function segmentToFormValues(segment) {
+  const start = new Date(segment.startAt);
+  const end = segment.endAt ? new Date(segment.endAt) : null;
+  return {
+    id: segment.id,
+    startDate: toISODate(start),
+    startTime: formatTimeFromDate(start),
+    endDate: end ? toISODate(end) : "",
+    endTime: end ? formatTimeFromDate(end) : "",
+  };
+}
+
+function captureSegmentDraft() {
+  return [...els.segmentsList.querySelectorAll(".segment-row")].map((row) => ({
+    id: row.dataset.segmentId,
+    startDate: row.querySelector('[data-segment-field="start-date"]').value,
+    startTime: row.querySelector('[data-segment-field="start-time"]').value,
+    endDate: row.querySelector('[data-segment-field="end-date"]').value,
+    endTime: row.querySelector('[data-segment-field="end-time"]').value,
+  }));
+}
+
+function syncMainDatesToSegmentEditor() {
+  const rows = [...els.segmentsList.querySelectorAll(".segment-row")];
+  if (!rows.length) return;
+  const first = rows[0];
+  const last = rows.at(-1);
+  first.querySelector('[data-segment-field="start-date"]').value = els.date.value;
+  first.querySelector('[data-segment-field="start-time"]').value = els.start.value;
+  last.querySelector('[data-segment-field="end-date"]').value = els.endDate.value;
+  last.querySelector('[data-segment-field="end-time"]').value = els.end.value;
+  els.segmentsError.textContent = "";
+}
+
+function syncMainDatesFromSegmentEditor(event) {
+  const row = event.target.closest(".segment-row");
+  if (!row) return;
+  const rows = [...els.segmentsList.querySelectorAll(".segment-row")];
+  if (row === rows[0]) {
+    els.date.value = row.querySelector('[data-segment-field="start-date"]').value;
+    els.start.value = row.querySelector('[data-segment-field="start-time"]').value;
+  }
+  if (row === rows.at(-1)) {
+    els.endDate.value = row.querySelector('[data-segment-field="end-date"]').value;
+    els.end.value = row.querySelector('[data-segment-field="end-time"]').value;
+  }
+  els.segmentsError.textContent = "";
+  persistEntryDraft();
+}
+
 function startTrackingFromForm() {
   const task = cleanText(els.task.value).toUpperCase();
   if (!task) return;
@@ -934,6 +1047,8 @@ function startTrackingFromForm() {
   const entry = normalizeEntry({
     id: createId(),
     date: toISODate(now),
+    startDate: toISODate(now),
+    endDate: "",
     task,
     description: els.description.value.trim(),
     notes: els.notes.value.trim(),
@@ -971,6 +1086,16 @@ function handleTrackingAction(event) {
 
   const id = button.dataset.id;
   const action = button.dataset.trackingAction;
+  const now = Date.now();
+  if ((trackingActionLocks.get(id) || 0) > now) return;
+  trackingActionLocks.set(id, now + TRACKING_ACTION_LOCK_MS);
+  button.disabled = true;
+  window.setTimeout(() => {
+    if ((trackingActionLocks.get(id) || 0) <= Date.now()) {
+      trackingActionLocks.delete(id);
+      renderRunningTasks();
+    }
+  }, TRACKING_ACTION_LOCK_MS + 20);
   if (action === "pause") pauseTrackedEntry(id);
   if (action === "resume") resumeTrackedEntry(id);
   if (action === "finish") finishTrackedEntry(id);
@@ -1007,6 +1132,7 @@ function resumeTrackedEntry(id) {
   entry.statusUpdatedAt = nowIso;
   entry.updatedAt = nowIso;
   entry.end = "";
+  entry.endDate = "";
   finishTrackingMutation();
 }
 
@@ -1022,6 +1148,7 @@ function finishTrackedEntry(id) {
   entry.statusUpdatedAt = nowIso;
   entry.updatedAt = nowIso;
   entry.end = lastEnd ? formatTimeFromDate(new Date(lastEnd)) : formatTimeFromDate(now);
+  entry.endDate = lastEnd ? toISODate(new Date(lastEnd)) : toISODate(now);
   finishTrackingMutation();
 }
 
@@ -1040,6 +1167,7 @@ function pauseEntryAt(entry, at) {
   entry.statusUpdatedAt = timestamp;
   entry.updatedAt = timestamp;
   entry.end = formatTimeFromDate(at);
+  entry.endDate = toISODate(at);
 }
 
 function closeLatestOpenSegment(entry, at) {
@@ -1073,6 +1201,13 @@ function getEditableEnd(entry) {
   if (entry.status === "active") return "";
   const lastEnd = getLastSegmentEnd(entry);
   return lastEnd ? formatTimeFromDate(new Date(lastEnd)) : entry.end || "";
+}
+
+function getEditableEndDate(entry) {
+  if (!entry?.tracked) return entry?.endDate || entry?.startDate || entry?.date || "";
+  if (entry.status === "active") return "";
+  const lastEnd = getLastSegmentEnd(entry);
+  return lastEnd ? toISODate(new Date(lastEnd)) : entry.endDate || entry.date || "";
 }
 
 function getTrackedEntries(status = "") {
@@ -1126,14 +1261,16 @@ function editEntry(id, options = {}) {
   if (!entry) return;
 
   state.editingId = id;
-  els.date.value = entry.date || todayISO();
+  els.date.value = entry.startDate || entry.date || todayISO();
   els.task.value = entry.task || TASKS[0];
   els.description.value = entry.description || "";
   els.notes.value = entry.notes || "";
   els.start.value = entry.start || "";
   els.end.value = getEditableEnd(entry);
+  els.endDate.value = getEditableEndDate(entry);
   els.save.textContent = "Actualizar";
   setEntryFormLock(false, true);
+  renderSegmentEditor(entry);
   updateTaskButtonState();
   highlightEditingEntry();
   if (options.openModal) openEntryModal();
@@ -1144,9 +1281,11 @@ function resetForm() {
   state.editingId = null;
   els.form.reset();
   els.date.value = todayISO();
+  els.endDate.value = todayISO();
   els.task.value = getTaskList()[0] || TASKS[0];
   els.save.textContent = "Guardar";
   setEntryFormLock(false, false);
+  renderSegmentEditor(null);
   clearEntryDraft();
   updateTaskButtonState();
   renderEntries();
@@ -1156,6 +1295,7 @@ function setEntryFormLock(lockTimes, editing) {
   els.date.disabled = lockTimes;
   els.start.disabled = lockTimes;
   els.end.disabled = lockTimes;
+  els.endDate.disabled = lockTimes;
   els.timeNowButtons.forEach((button) => {
     button.disabled = lockTimes;
   });
@@ -1189,6 +1329,8 @@ function captureEntryDraft() {
     notes: els.notes.value,
     start: els.start.value,
     end: els.end.value,
+    endDate: els.endDate.value,
+    segmentDraft: captureSegmentDraft(),
     lockTimes: els.date.disabled,
     modalOpen: els.entryPanel.classList.contains("modal-open"),
     focusId,
@@ -1218,8 +1360,13 @@ function restoreEntryDraft(draft) {
   els.notes.value = draft.notes || "";
   els.start.value = draft.start || "";
   els.end.value = draft.end || "";
+  els.endDate.value = draft.endDate || draft.date || todayISO();
   els.save.textContent = editingExists ? "Actualizar" : "Guardar";
   setEntryFormLock(editingExists && Boolean(draft.lockTimes), editingExists);
+  const editingEntry = editingExists
+    ? state.entries.find((entry) => entry.id === draft.editingId)
+    : null;
+  renderSegmentEditor(editingEntry, draft.segmentDraft?.length ? draft.segmentDraft : null);
   els.entryPanel.classList.toggle("modal-open", Boolean(draft.modalOpen));
   document.body.classList.toggle("entry-modal-open", Boolean(draft.modalOpen));
   updateTaskButtonState();
@@ -1274,6 +1421,7 @@ function clearEntryDraft() {
 
 function setTodayIfEmpty() {
   if (!els.date.value) els.date.value = todayISO();
+  if (!els.endDate.value) els.endDate.value = els.date.value;
   if (!els.task.value) els.task.value = getTaskList()[0] || TASKS[0];
   updateTaskButtonState();
 }
@@ -1282,6 +1430,9 @@ function setTimeToNow(fieldId) {
   const field = document.getElementById(fieldId);
   if (!field) return;
   field.value = nowTime();
+  if (field === els.start) els.date.value = todayISO();
+  if (field === els.end) els.endDate.value = todayISO();
+  syncMainDatesToSegmentEditor();
   field.focus();
   persistEntryDraft();
 }
@@ -1356,6 +1507,8 @@ function renderRunningTasks() {
     .map((entry) => {
       const active = entry.status === "active";
       const segments = normalizeSegments(entry.segments);
+      const actionLocked = (trackingActionLocks.get(entry.id) || 0) > Date.now();
+      const disabled = actionLocked ? " disabled" : "";
       return `<article class="running-task ${active ? "active" : "paused"}">
         <div class="running-task-main">
           <span class="running-task-title">
@@ -1373,13 +1526,13 @@ function renderRunningTasks() {
         <div class="running-task-actions">
           <button class="ghost" type="button" data-tracking-action="${
             active ? "pause" : "resume"
-          }" data-id="${escapeAttr(entry.id)}">${active ? "Pausar" : "Reanudar"}</button>
+          }" data-id="${escapeAttr(entry.id)}"${disabled}>${active ? "Pausar" : "Reanudar"}</button>
           <button class="ghost" type="button" data-tracking-action="edit" data-id="${escapeAttr(
             entry.id,
-          )}">Editar</button>
+          )}"${disabled}>Editar</button>
           <button class="btn finish-task" type="button" data-tracking-action="finish" data-id="${escapeAttr(
             entry.id,
-          )}">Finalizar</button>
+          )}"${disabled}>Finalizar</button>
         </div>
       </article>`;
     })
@@ -1745,6 +1898,12 @@ function computeEntryMinutes(entry) {
 function computeEntryMilliseconds(entry) {
   const segments = normalizeSegments(entry.segments);
   if (!segments.length) {
+    const startAt = localDateTime(entry.startDate || entry.date, entry.start);
+    const endAt = localDateTime(
+      entry.endDate || entry.startDate || entry.date,
+      entry.end,
+    );
+    if (startAt && endAt && endAt >= startAt) return endAt - startAt;
     return computePartial(entry.start, entry.end) * 60000;
   }
 
@@ -1902,6 +2061,16 @@ function normalizeEntry(entry, fallbackDate = new Date().toISOString()) {
   const rawDate = parseDate(entry.date || entry.FECHA || entry.Fecha);
   const rawStart = parseTime(entry.start || entry["TIEMPO INICIO"] || entry.inicio);
   const rawEnd = parseTime(entry.end || entry["TIEMPO FINAL"] || entry.final);
+  const rawStartDate = parseDate(entry.startDate) || rawDate;
+  let rawEndDate = parseDate(entry.endDate) || rawStartDate;
+  if (!entry.endDate && rawStart && rawEnd) {
+    const legacyStart = localDateTime(rawStartDate, rawStart);
+    const legacyEnd = localDateTime(rawEndDate, rawEnd);
+    if (legacyStart && legacyEnd && legacyEnd < legacyStart) {
+      legacyEnd.setDate(legacyEnd.getDate() + 1);
+      rawEndDate = toISODate(legacyEnd);
+    }
+  }
 
   return {
     id: entry.id || createId(),
@@ -1909,6 +2078,16 @@ function normalizeEntry(entry, fallbackDate = new Date().toISOString()) {
       tracked && firstDate && !Number.isNaN(firstDate.getTime())
         ? toISODate(firstDate)
         : rawDate,
+    startDate:
+      tracked && firstDate && !Number.isNaN(firstDate.getTime())
+        ? toISODate(firstDate)
+        : rawStartDate,
+    endDate:
+      tracked && finalDate && !Number.isNaN(finalDate.getTime())
+        ? toISODate(finalDate)
+        : rawEnd
+          ? rawEndDate
+          : "",
     task: cleanText(entry.task || entry.TAREA || entry.Tarea).toUpperCase(),
     description: cleanText(
       entry.description || entry.DESCRIPCION || entry.Descripcion,
@@ -2174,6 +2353,8 @@ function rowsToEntries(rows) {
   const headers = rows[0].map(normalizeHeader);
   const index = {
     date: findHeader(headers, ["fecha"]),
+    startDate: findHeader(headers, ["fecha inicio"]),
+    endDate: findHeader(headers, ["fecha final"]),
     task: findHeader(headers, ["tarea"]),
     description: findHeader(headers, ["descripcion", "descripcion"]),
     notes: findHeader(headers, ["notas"]),
@@ -2190,6 +2371,8 @@ function rowsToEntries(rows) {
       normalizeEntry({
         id: createId(),
         date: row[index.date],
+        startDate: row[index.startDate],
+        endDate: row[index.endDate],
         task: row[index.task],
         description: row[index.description],
         notes: row[index.notes],
@@ -2319,6 +2502,8 @@ function parseCsv(text) {
 function exportCsv() {
   const headers = [
     "FECHA",
+    "FECHA INICIO",
+    "FECHA FINAL",
     "TAREA",
     "DESCRIPCION",
     "Notas",
@@ -2334,6 +2519,8 @@ function exportCsv() {
     .map((entry) =>
       [
         formatDate(entry.date),
+        formatDate(entry.startDate || entry.date),
+        formatDate(entry.endDate),
         entry.task,
         entry.description,
         entry.notes,
