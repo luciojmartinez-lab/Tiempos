@@ -183,10 +183,50 @@ const trackingEvent = (action) => ({
     },
   },
 });
+const signatureBeforePause = context.getSyncDataSignature();
 context.handleTrackingAction(trackingEvent("pause"));
 context.handleTrackingAction(trackingEvent("resume"));
+const signatureAfterPause = context.getSyncDataSignature();
 assert.equal(vm.runInContext('state.entries[0].status', context), "paused");
 assert.equal(vm.runInContext('state.entries[0].segments.length', context), 1);
+assert.notEqual(signatureAfterPause, signatureBeforePause);
+
+let releaseSyncResponse;
+context.fetch = () => new Promise((resolve) => {
+  releaseSyncResponse = resolve;
+});
+context.navigator = { onLine: true };
+context.syncEls = {
+  syncKey: { value: "prueba-sync" },
+  syncAuto: { checked: true },
+  syncNow: { disabled: false },
+  syncCheck: { disabled: false },
+  syncPull: { disabled: false },
+  syncReplace: { disabled: false },
+};
+vm.runInContext(
+  `Object.assign(els, syncEls);
+   state.sync.key = "prueba-sync";
+   state.sync.auto = true;
+   state.entries[0].status = "active";
+   state.entries[0].end = "";
+   state.entries[0].segments[0].endAt = "";`,
+  context,
+);
+const pendingSync = context.runSync({ mode: "merge", silent: true });
+vm.runInContext(
+  `state.entries[0].status = "completed";
+   state.entries[0].end = "10:00";
+   state.entries[0].statusUpdatedAt = "2026-08-22T10:00:00.000Z";
+   state.entries[0].updatedAt = "2026-08-22T10:00:00.000Z";
+   state.entries[0].segments[0].endAt = "2026-08-22T10:00:00.000Z";
+   state.entries[0].segments[0].updatedAt = "2026-08-22T10:00:00.000Z";`,
+  context,
+);
+releaseSyncResponse({ ok: true, json: async () => ({ entries: [] }) });
+await pendingSync;
+assert.equal(vm.runInContext('state.entries[0].status', context), "completed");
+assert.equal(vm.runInContext('state.entries[0].end', context), "10:00");
 
 context.saveEntryDraft({ editingId: "tracked", segmentDraft: [{ id: "new" }] });
 assert.equal(storageData.size > 0, true);

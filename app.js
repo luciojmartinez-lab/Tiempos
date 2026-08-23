@@ -5,7 +5,7 @@ const DELETED_ENTRIES_KEY = "tiempos.deletedEntries.100v11";
 const SYNC_SETTINGS_KEY = "tiempos.syncSettings.100v11";
 const TRACKING_SETTINGS_KEY = "tiempos.trackingSettings.100v24";
 const ENTRY_DRAFT_KEY = "tiempos.entryDraft.100v25";
-const APP_VERSION = "100v29";
+const APP_VERSION = "100v30";
 const TRACKING_ACTION_LOCK_MS = 850;
 const ALL_YEARS_VALUE = "all";
 const SYNC_ENDPOINT = "/api/sync";
@@ -502,6 +502,7 @@ function updateSyncStatus(message, type = "") {
 
 let syncTimer = null;
 let syncInProgress = false;
+let syncQueuedAfterCurrent = false;
 let liveTimer = null;
 let syncHeartbeat = null;
 let lastLiveMinute = -1;
@@ -573,8 +574,12 @@ async function runSync({ mode, silent }) {
     return;
   }
 
-  if (syncInProgress) return;
+  if (syncInProgress) {
+    if (mode === "merge") syncQueuedAfterCurrent = true;
+    return;
+  }
   syncInProgress = true;
+  const requestSignature = getSyncDataSignature();
   if (!silent) {
     updateSyncStatus(
       syncProgressMessage(mode),
@@ -599,6 +604,12 @@ async function runSync({ mode, silent }) {
 
     if (mode === "status") {
       updateSyncStatus(cloudSummaryMessage(data), "ok");
+      return;
+    }
+
+    if (mode !== "status" && getSyncDataSignature() !== requestSignature) {
+      syncQueuedAfterCurrent = true;
+      if (!silent) updateSyncStatus("Guardando los cambios mas recientes...");
       return;
     }
 
@@ -628,6 +639,10 @@ async function runSync({ mode, silent }) {
     els.syncCheck.disabled = false;
     els.syncPull.disabled = false;
     els.syncReplace.disabled = false;
+    if (syncQueuedAfterCurrent) {
+      syncQueuedAfterCurrent = false;
+      window.setTimeout(() => syncNow({ silent: true }), 80);
+    }
   }
 }
 
@@ -988,6 +1003,16 @@ function readEditedSegments(
     segments,
     hasOpenSegment: segments.some((segment) => !segment.endAt),
   };
+}
+
+function getSyncDataSignature() {
+  return JSON.stringify({
+    entries: state.entries.map(normalizeEntry),
+    deletedEntries: state.deletedEntries.map(normalizeTombstone),
+    customTasks: state.customTasks,
+    deletedTasks: state.deletedTasks,
+    trackingSettings: normalizeTrackingSettings(state.tracking),
+  });
 }
 
 function showSegmentsError(message) {
