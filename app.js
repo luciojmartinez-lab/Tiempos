@@ -5,7 +5,7 @@ const DELETED_ENTRIES_KEY = "tiempos.deletedEntries.100v11";
 const SYNC_SETTINGS_KEY = "tiempos.syncSettings.100v11";
 const TRACKING_SETTINGS_KEY = "tiempos.trackingSettings.100v24";
 const ENTRY_DRAFT_KEY = "tiempos.entryDraft.100v25";
-const APP_VERSION = "100v30";
+const APP_VERSION = "100v31";
 const TRACKING_ACTION_LOCK_MS = 850;
 const ALL_YEARS_VALUE = "all";
 const SYNC_ENDPOINT = "/api/sync";
@@ -1506,6 +1506,9 @@ function restoreEntryDraft(draft) {
     draft.editingId && state.entries.some((entry) => entry.id === draft.editingId),
   );
   state.editingId = editingExists ? draft.editingId : null;
+  const editingEntry = editingExists
+    ? state.entries.find((entry) => entry.id === draft.editingId)
+    : null;
 
   if (
     draft.task &&
@@ -1520,13 +1523,11 @@ function restoreEntryDraft(draft) {
   els.notes.value = draft.notes || "";
   els.start.value = draft.start || "";
   els.end.value = draft.end || "";
-  els.endDate.value = draft.endDate || draft.date || todayISO();
+  els.endDate.value = getRestoredDraftEndDate(draft, editingEntry);
   els.save.textContent = editingExists ? "Actualizar" : "Guardar";
   setEntryFormLock(editingExists && Boolean(draft.lockTimes), editingExists);
-  const editingEntry = editingExists
-    ? state.entries.find((entry) => entry.id === draft.editingId)
-    : null;
-  renderSegmentEditor(editingEntry, draft.segmentDraft?.length ? draft.segmentDraft : null);
+  const segmentDraft = getRestoredSegmentDraft(draft, editingEntry);
+  renderSegmentEditor(editingEntry, segmentDraft.length ? segmentDraft : null);
   els.entryPanel.classList.toggle("modal-open", Boolean(draft.modalOpen));
   document.body.classList.toggle("entry-modal-open", Boolean(draft.modalOpen));
   updateTaskButtonState();
@@ -1548,6 +1549,22 @@ function restoreEntryDraft(draft) {
       }
     }
   });
+}
+
+function getRestoredDraftEndDate(draft, editingEntry) {
+  if (editingEntry?.status === "active" && !draft.end) return "";
+  if (Object.hasOwn(draft, "endDate")) return draft.endDate || "";
+  return draft.date || todayISO();
+}
+
+function getRestoredSegmentDraft(draft, editingEntry) {
+  const segments = Array.isArray(draft.segmentDraft)
+    ? draft.segmentDraft.map((segment) => ({ ...segment }))
+    : [];
+  if (editingEntry?.status !== "active" || !segments.length) return segments;
+  const last = segments.at(-1);
+  if (!last.endTime) last.endDate = "";
+  return segments;
 }
 
 function persistEntryDraft() {

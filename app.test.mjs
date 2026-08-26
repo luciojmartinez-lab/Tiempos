@@ -70,6 +70,27 @@ const activeAfterRestart = context.normalizeEntry(JSON.parse(JSON.stringify({
 assert.equal(activeAfterRestart.status, "active");
 assert.equal(activeAfterRestart.segments[0].endAt, "");
 
+const restoredActiveDraft = {
+  date: "2026-08-22",
+  end: "",
+  endDate: "2026-08-22",
+  segmentDraft: [{
+    id: "open",
+    startDate: "2026-08-22",
+    startTime: "09:00",
+    endDate: "2026-08-22",
+    endTime: "",
+  }],
+};
+assert.equal(
+  context.getRestoredDraftEndDate(restoredActiveDraft, activeAfterRestart),
+  "",
+);
+assert.equal(
+  context.getRestoredSegmentDraft(restoredActiveDraft, activeAfterRestart).at(-1).endDate,
+  "",
+);
+
 function segmentRow(id, startDate, startTime, endDate, endTime) {
   const values = { "start-date": startDate, "start-time": startTime, "end-date": endDate, "end-time": endTime };
   return {
@@ -134,6 +155,24 @@ context.testFields = {
   notes: { value: "" },
 };
 vm.runInContext("Object.assign(els, testFields)", context);
+context.testList.querySelectorAll = () => [
+  segmentRow("open", "2026-08-22", "09:00", "", ""),
+];
+context.testList.querySelector = () => null;
+const activeDescriptionUpdate = context.buildTrackedEntryFromForm(
+  activeAfterRestart,
+  "2026-08-22T09:30:00.000Z",
+);
+assert.equal(activeDescriptionUpdate.description, "Continuada");
+assert.equal(activeDescriptionUpdate.status, "active");
+assert.equal(activeDescriptionUpdate.end, "");
+
+context.testList.querySelectorAll = () => [
+  segmentRow("original", "2026-08-22", "09:00", "2026-08-22", "10:00"),
+  segmentRow("continued", "2026-08-22", "12:00", "", ""),
+];
+context.testList.querySelector = (selector) =>
+  selector === ".segment-row.is-new" ? {} : null;
 const convertedAndContinued = context.buildTrackedEntryFromForm(
   context.normalizeEntry({
     id: "manual-to-tracked",
