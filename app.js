@@ -5,7 +5,7 @@ const DELETED_ENTRIES_KEY = "tiempos.deletedEntries.100v11";
 const SYNC_SETTINGS_KEY = "tiempos.syncSettings.100v11";
 const TRACKING_SETTINGS_KEY = "tiempos.trackingSettings.100v24";
 const ENTRY_DRAFT_KEY = "tiempos.entryDraft.100v25";
-const APP_VERSION = "100v31";
+const APP_VERSION = "100v32";
 const TRACKING_ACTION_LOCK_MS = 850;
 const ALL_YEARS_VALUE = "all";
 const SYNC_ENDPOINT = "/api/sync";
@@ -1636,14 +1636,74 @@ function setTimeToNow(fieldId) {
 
 function openTimePicker(fieldId) {
   const field = document.getElementById(fieldId);
-  if (!field) return;
-  field.focus();
-  if (typeof field.showPicker !== "function") return;
-  try {
-    field.showPicker();
-  } catch {
-    // Algunos navegadores solo permiten abrirlo desde interacciones directas.
+  if (!field || field.disabled) return;
+  const previousFocus = document.activeElement;
+  const initial = (field.value || nowTime()).split(":").map(Number);
+  let hour = initial[0], minute = initial[1], mode = "hour";
+  const dialog = document.createElement("dialog");
+  dialog.className = "clock-dialog";
+  dialog.setAttribute("aria-label", fieldId === "entry-start" ? "Elegir hora de inicio" : "Elegir hora final");
+  dialog.innerHTML = `<h2>${fieldId === "entry-start" ? "Hora inicio" : "Hora final"}</h2>
+    <div class="clock-display"><button type="button" data-mode="hour" aria-label="Elegir horas"></button><span>:</span><button type="button" data-mode="minute" aria-label="Elegir minutos"></button></div>
+    <p class="clock-hint" aria-live="polite"></p>
+    <div class="clock-face" role="group"></div>
+    <div class="clock-adjust"><button type="button" data-adjust="-1" aria-label="Restar un minuto">−</button><span>Ajustar minutos</span><button type="button" data-adjust="1" aria-label="Añadir un minuto">+</button></div>
+    <div class="clock-actions"><button type="button" data-cancel>Cancelar</button><button type="button" data-accept>Aceptar</button></div>`;
+  const pad = (value) => String(value).padStart(2, "0");
+  function renderClock() {
+    dialog.querySelector('[data-mode="hour"]').textContent = pad(hour);
+    dialog.querySelector('[data-mode="minute"]').textContent = pad(minute);
+    dialog.querySelectorAll('[data-mode]').forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.mode === mode)));
+    dialog.querySelector('.clock-hint').textContent = mode === "hour" ? "Elige la hora (0–23)" : "Elige los minutos";
+    const face = dialog.querySelector('.clock-face');
+    face.setAttribute("aria-label", mode === "hour" ? "Horas" : "Minutos");
+    face.replaceChildren();
+    const count = mode === "hour" ? 24 : 60;
+    const selected = mode === "hour" ? hour : minute;
+    const angle = (mode === "hour" ? selected % 12 / 12 : selected / 60) * 360;
+    const hand = document.createElement("span");
+    hand.className = "clock-hand";
+    hand.style.transform = `rotate(${angle}deg)`;
+    hand.style.height = mode === "hour" && (selected === 0 || selected > 12) ? "28%" : "41%";
+    face.append(hand);
+    for (let i = 0; i < count; i++) {
+      const button = document.createElement("button");
+      button.type = "button";
+      const inner = mode === "hour" && (i === 0 || i > 12);
+      const theta = (mode === "hour" ? i % 12 / 12 : i / 60) * Math.PI * 2;
+      const radius = inner ? 28 : 41;
+      button.style.left = `${50 + Math.sin(theta) * radius}%`;
+      button.style.top = `${50 - Math.cos(theta) * radius}%`;
+      button.className = "clock-number";
+      if (mode === "minute" && i % 5 !== 0) button.classList.add("clock-tick");
+      button.textContent = mode === "hour" ? String(i) : i % 5 === 0 ? pad(i) : "";
+      button.setAttribute("aria-label", `${i} ${mode === "hour" ? "horas" : "minutos"}`);
+      button.setAttribute("aria-pressed", String(i === selected));
+      button.addEventListener("click", () => {
+        if (mode === "hour") { hour = i; mode = "minute"; } else { minute = i; }
+        renderClock();
+        dialog.querySelector(`[data-mode="${mode}"]`).focus();
+      });
+      face.append(button);
+    }
   }
+  dialog.querySelectorAll('[data-mode]').forEach((button) => button.addEventListener("click", () => { mode = button.dataset.mode; renderClock(); }));
+  dialog.querySelectorAll('[data-adjust]').forEach((button) => button.addEventListener("click", () => {
+    minute = (minute + Number(button.dataset.adjust) + 60) % 60;
+    mode = "minute";
+    renderClock();
+  }));
+  dialog.querySelector('[data-cancel]').addEventListener("click", () => dialog.close());
+  dialog.querySelector('[data-accept]').addEventListener("click", () => {
+    field.value = `${pad(hour)}:${pad(minute)}`;
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+    dialog.close();
+  });
+  dialog.addEventListener("close", () => { dialog.remove(); previousFocus?.focus(); });
+  document.body.append(dialog);
+  renderClock();
+  dialog.showModal();
 }
 
 function updateTaskButtonState() {
