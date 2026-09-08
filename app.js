@@ -5,7 +5,7 @@ const DELETED_ENTRIES_KEY = "tiempos.deletedEntries.100v11";
 const SYNC_SETTINGS_KEY = "tiempos.syncSettings.100v11";
 const TRACKING_SETTINGS_KEY = "tiempos.trackingSettings.100v24";
 const ENTRY_DRAFT_KEY = "tiempos.entryDraft.100v25";
-const APP_VERSION = "100v32";
+const APP_VERSION = "100v33";
 const TRACKING_ACTION_LOCK_MS = 850;
 const ALL_YEARS_VALUE = "all";
 const SYNC_ENDPOINT = "/api/sync";
@@ -295,6 +295,7 @@ function bindEvents() {
   });
   els.addSegment.addEventListener("click", addSegmentToEditor);
   els.segmentsList.addEventListener("click", removeNewSegmentFromEditor);
+  els.segmentsList.addEventListener("click", setSegmentTimeToNow);
   els.runningTasks.addEventListener("click", handleTrackingAction);
   els.timeNowButtons.forEach((button) => {
     button.addEventListener("click", () => setTimeToNow(button.dataset.timeNow));
@@ -1059,9 +1060,9 @@ function renderSegmentEditor(entry, draftSegments = null) {
       return `<div class="segment-row${isNew ? " is-new" : ""}" data-segment-id="${escapeAttr(segment.id)}">
         <span class="segment-number">Tramo ${index + 1}</span>
         <label><span>Fecha inicio</span><input type="date" data-segment-field="start-date" value="${escapeAttr(values.startDate)}" required></label>
-        <label><span>Hora inicio</span><input type="time" data-segment-field="start-time" value="${escapeAttr(values.startTime)}" required></label>
+        <label><span>Hora inicio</span><span class="segment-time-field"><input type="time" data-segment-field="start-time" value="${escapeAttr(values.startTime)}" required><button type="button" class="time-now-button" data-segment-now="start" aria-label="Hora inicio actual">Actual</button></span></label>
         <label><span>Fecha final</span><input type="date" data-segment-field="end-date" value="${escapeAttr(values.endDate)}"></label>
-        <label><span>Hora final</span><input type="time" data-segment-field="end-time" value="${escapeAttr(values.endTime)}"></label>
+        <label><span>Hora final</span><span class="segment-time-field"><input type="time" data-segment-field="end-time" value="${escapeAttr(values.endTime)}"><button type="button" class="time-now-button" data-segment-now="end" aria-label="Hora final actual">Actual</button></span></label>
         ${isNew ? '<button class="ghost remove-new-segment" type="button" data-remove-new-segment>Quitar tramo nuevo</button>' : ""}
       </div>`;
     })
@@ -1135,6 +1136,19 @@ function addSegmentToEditor() {
     behavior: "smooth",
     block: "nearest",
   });
+}
+
+function setSegmentTimeToNow(event) {
+  const button = event.target.closest("[data-segment-now]");
+  if (!button) return;
+  const row = button.closest(".segment-row");
+  const side = button.dataset.segmentNow;
+  const now = new Date();
+  const field = row.querySelector('[data-segment-field="' + side + '-time"]');
+  row.querySelector('[data-segment-field="' + side + '-date"]').value = toISODate(now);
+  field.value = formatTimeFromDate(now);
+  syncMainDatesFromSegmentEditor({ target: field });
+  field.focus();
 }
 
 function removeNewSegmentFromEditor(event) {

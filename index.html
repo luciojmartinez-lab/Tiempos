@@ -10,12 +10,12 @@
     <meta name="apple-mobile-web-app-title" content="Tiempos" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
-    <link rel="stylesheet" href="/styles.css?v=100v32" />
+    <link rel="stylesheet" href="/styles.css?v=100v33" />
     <script
       defer
       src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"
     ></script>
-    <script defer src="/app.js?v=100v32"></script>
+    <script defer src="/app.js?v=100v33"></script>
   </head>
   <body>
     <header class="top-navbar">
@@ -26,11 +26,11 @@
             ><span class="live-indicator"></span> Control de trabajo</span
           >
         </div>
-        <span class="version-badge">100v32</span>
+        <span class="version-badge">100v33</span>
       </div>
       <nav class="navbar-row-menu" aria-label="Hojas">
         <button class="nav-item active" type="button" data-view="datos">
-          Datos
+          Tareas
         </button>
         <button class="nav-item" type="button" data-view="graficos">
           Graficos
@@ -101,26 +101,10 @@
             </button>
           </div>
           <form id="entry-form" autocomplete="off">
-            <div class="form-grid">
+            <div class="form-grid entry-timing">
               <label>
                 <span>Fecha inicio</span>
                 <input type="date" id="entry-date" required />
-              </label>
-              <label>
-                <span>Tarea</span>
-                <select id="entry-task" required></select>
-              </label>
-              <label class="wide">
-                <span>Descripcion</span>
-                <input
-                  type="text"
-                  id="entry-description"
-                  placeholder="Entrar datos"
-                />
-              </label>
-              <label class="wide">
-                <span>Notas</span>
-                <input type="text" id="entry-notes" />
               </label>
               <label class="time-label">
                 <span>Hora inicio</span>
@@ -177,6 +161,24 @@
                 </span>
               </label>
             </div>
+            <div class="form-grid entry-details">
+              <label>
+                <span>Tarea</span>
+                <select id="entry-task" required></select>
+              </label>
+              <label class="wide">
+                <span>Descripcion</span>
+                <input
+                  type="text"
+                  id="entry-description"
+                  placeholder="Entrar datos"
+                />
+              </label>
+              <label class="wide">
+                <span>Notas</span>
+                <input type="text" id="entry-notes" />
+              </label>
+            </div>
             <section class="segments-editor" id="segments-editor" hidden>
               <div class="segments-editor-head">
                 <span>
@@ -209,7 +211,7 @@
 
         <section class="table-panel">
           <div class="section-head">
-            <h1>Datos</h1>
+            <h1>Tareas</h1>
             <div class="table-actions">
               <select id="sort-order" aria-label="Ordenar registros">
                 <option value="desc">Nuevo a viejo</option>
