@@ -10,12 +10,13 @@
     <meta name="apple-mobile-web-app-title" content="Tiempos" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
-    <link rel="stylesheet" href="/styles.css?v=100v33" />
+    <link rel="stylesheet" href="/styles.css?v=100v34" />
     <script
       defer
       src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"
     ></script>
-    <script defer src="/app.js?v=100v33"></script>
+    <script defer src="/app.js?v=100v34"></script>
+    <script defer src="/pending.js?v=100v34"></script>
   </head>
   <body>
     <header class="top-navbar">
@@ -26,12 +27,13 @@
             ><span class="live-indicator"></span> Control de trabajo</span
           >
         </div>
-        <span class="version-badge">100v33</span>
+        <span class="version-badge">100v34</span>
       </div>
       <nav class="navbar-row-menu" aria-label="Hojas">
         <button class="nav-item active" type="button" data-view="datos">
           Tareas
         </button>
+        <button class="nav-item" type="button" data-view="pendientes">Pendientes</button>
         <button class="nav-item" type="button" data-view="graficos">
           Graficos
         </button>

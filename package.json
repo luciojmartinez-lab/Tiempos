@@ -1,10 +1,10 @@
 {
   "name": "tiempos",
-  "version": "100.33.0",
+  "version": "100.34.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node app.test.mjs"
+    "test": "node app.test.mjs && node pending.test.mjs"
   },
   "dependencies": {
     "@netlify/blobs": "^9.1.0"

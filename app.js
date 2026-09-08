@@ -5,7 +5,7 @@ const DELETED_ENTRIES_KEY = "tiempos.deletedEntries.100v11";
 const SYNC_SETTINGS_KEY = "tiempos.syncSettings.100v11";
 const TRACKING_SETTINGS_KEY = "tiempos.trackingSettings.100v24";
 const ENTRY_DRAFT_KEY = "tiempos.entryDraft.100v25";
-const APP_VERSION = "100v33";
+const APP_VERSION = "100v34";
 const TRACKING_ACTION_LOCK_MS = 850;
 const ALL_YEARS_VALUE = "all";
 const SYNC_ENDPOINT = "/api/sync";
@@ -97,6 +97,7 @@ const SAMPLE_ENTRIES = [
 
 const state = {
   entries: loadEntries(),
+  pendingTasks: loadPendingTasks(),
   customTasks: loadCustomTasks(),
   deletedTasks: loadDeletedTasks(),
   deletedEntries: loadDeletedEntries(),
@@ -120,6 +121,7 @@ function init() {
   bindElements();
   buildTaskControls();
   bindEvents();
+  initPending();
   setSyncFormValues();
   setTrackingFormValues();
   setTodayIfEmpty();
@@ -388,6 +390,7 @@ function persistBeforeSuspension() {
 }
 
 function setView(view) {
+  if (view === "pendientes") renderPending();
   document.body.dataset.activeView = view;
   els.navItems.forEach((button) => {
     button.classList.toggle("active", button.dataset.view === view);
@@ -675,6 +678,7 @@ function buildSyncPayload(mode = "merge") {
     mode,
     version: APP_VERSION,
     clientLastSyncedAt: state.sync.lastSyncedAt || "",
+    pendingTasks: state.pendingTasks,
     entries: state.entries.map(normalizeEntry),
     deletedEntries: state.deletedEntries.map(normalizeTombstone),
     customTasks: state.customTasks,
@@ -684,6 +688,7 @@ function buildSyncPayload(mode = "merge") {
 }
 
 function applySyncedData(data) {
+  if (Array.isArray(data.pendingTasks)) state.pendingTasks = mergePendingTasks([], data.pendingTasks);
   const deletedIds = new Set((data.deletedEntries || []).map((item) => item.id));
   state.entries = repairLegacyMigrationEntries(data.entries || [])
     .filter((entry) => entry.id && !deletedIds.has(entry.id))
@@ -739,7 +744,7 @@ function isMobileLayout() {
 
 function setInitialView() {
   const requested = new URLSearchParams(window.location.search).get("view");
-  const allowedViews = new Set(["datos", "graficos", "configuracion"]);
+  const allowedViews = new Set(["datos", "pendientes", "graficos", "configuracion"]);
   setView(allowedViews.has(requested) ? requested : "datos");
 }
 
@@ -875,6 +880,7 @@ function buildManualEntryFromForm(previous, savedAt) {
 
   return normalizeEntry({
     id: state.editingId || createId(),
+    pendingId: previous?.pendingId || "",
     date: startDate,
     startDate,
     endDate: endTime ? endDate : "",
@@ -1008,6 +1014,7 @@ function readEditedSegments(
 
 function getSyncDataSignature() {
   return JSON.stringify({
+    pendingTasks: state.pendingTasks,
     entries: state.entries.map(normalizeEntry),
     deletedEntries: state.deletedEntries.map(normalizeTombstone),
     customTasks: state.customTasks,
@@ -1737,6 +1744,7 @@ function updateDateFilterState() {
 }
 
 function render() {
+  if (typeof renderPending === "function") renderPending();
   renderDataFilterOptions();
   renderStats();
   renderRunningTasks();
@@ -2349,6 +2357,7 @@ function normalizeEntry(entry, fallbackDate = new Date().toISOString()) {
 
   return {
     id: entry.id || createId(),
+    pendingId: cleanText(entry.pendingId),
     date:
       tracked && firstDate && !Number.isNaN(firstDate.getTime())
         ? toISODate(firstDate)
@@ -2550,6 +2559,7 @@ function persistTrackingSettings() {
 }
 
 function persistAll() {
+  persistPendingTasks();
   persist();
   persistCustomTasks();
   persistDeletedTasks();
@@ -2576,7 +2586,11 @@ async function handleFileLoad() {
       throw new Error("Formato no soportado");
     }
 
-    if (!entries.length) throw new Error("No se han encontrado registros");
+    if (!entries.length && !Array.isArray(backupData?.pendingTasks)) throw new Error("No se han encontrado registros");
+    if (Array.isArray(backupData?.pendingTasks)) {
+      state.pendingTasks = mergePendingTasks([], backupData.pendingTasks);
+      persistPendingTasks();
+    }
     state.entries = entries;
     state.deletedEntries = Array.isArray(backupData?.deletedEntries)
       ? backupData.deletedEntries.map(normalizeTombstone)
@@ -2818,6 +2832,7 @@ function exportJson() {
     "tiempos-backup.json",
     JSON.stringify(
       {
+        pendingTasks: state.pendingTasks,
         entries: state.entries,
         deletedEntries: state.deletedEntries,
         customTasks: state.customTasks,
@@ -2855,4 +2870,92 @@ function escapeHtml(value) {
 
 function escapeAttr(value) {
   return escapeHtml(value).replace(/'/g, "&#39;");
+}
+
+function pendingDate(value) {
+  const text = String(value || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return "";
+  const d = new Date(text + "T12:00:00Z");
+  return Number.isFinite(d.getTime()) && d.toISOString().slice(0, 10) === text ? text : "";
+}
+
+function normalizePendingTask(item = {}) {
+  const date = (v) => pendingDate(v);
+  const stamp = (v) => { const d = new Date(v || ""); return Number.isFinite(d.getTime()) ? d.toISOString() : ""; };
+  const startDate = date(item.startDate), dueDate = date(item.dueDate);
+  return {
+    id: String(item.id || ""), task: String(item.task || "").trim().toUpperCase(),
+    description: String(item.description || "").trim(), notes: String(item.notes || "").trim(),
+    startDate, dueDate, completedAt: stamp(item.completedAt), deletedAt: stamp(item.deletedAt),
+    updatedAt: stamp(item.updatedAt) || "2000-01-01T00:00:00.000Z",
+    createdAt: stamp(item.createdAt) || stamp(item.updatedAt) || "2000-01-01T00:00:00.000Z",
+    repeat: ["daily", "weekly", "monthly", "yearly"].includes(item.repeat) ? item.repeat : "",
+    seriesId: String(item.seriesId || item.id || ""),
+    repeatIndex: Math.max(0, Math.floor(Number(item.repeatIndex) || 0)),
+    anchorStart: date(item.anchorStart) || startDate, anchorDue: date(item.anchorDue) || dueDate,
+    nextPendingId: String(item.nextPendingId || ""),
+  };
+}
+
+function mergePendingTasks(first = [], second = []) {
+  const records = new Map();
+  for (const raw of [...first, ...second]) {
+    const item = normalizePendingTask(raw);
+    if (!item.id) continue;
+    const old = records.get(item.id);
+    if (!old || item.updatedAt > old.updatedAt || (item.updatedAt === old.updatedAt && JSON.stringify(item) > JSON.stringify(old))) records.set(item.id, item);
+  }
+  return [...records.values()].sort((a, b) => a.id.localeCompare(b.id));
+}
+
+function comparePendingTasks(a, b) {
+  return (a.startDate || "9999-99-99").localeCompare(b.startDate || "9999-99-99") || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
+}
+
+function pendingDaysBetween(first, last) {
+  return Math.round((Date.parse(last + "T12:00:00Z") - Date.parse(first + "T12:00:00Z")) / 86400000);
+}
+
+function pendingOverdueDays(item, today) {
+  return item.completedAt || item.deletedAt || !item.dueDate ? 0 : Math.max(0, pendingDaysBetween(item.dueDate, today));
+}
+
+function shiftPendingDate(value, repeat, steps) {
+  if (!value) return "";
+  const [y, m, d] = value.split("-").map(Number);
+  const date = new Date(value + "T12:00:00Z");
+  if (repeat === "daily" || repeat === "weekly") date.setUTCDate(d + steps * (repeat === "weekly" ? 7 : 1));
+  else {
+    date.setUTCDate(1);
+    date.setUTCFullYear(y + (repeat === "yearly" ? steps : 0));
+    date.setUTCMonth(m - 1 + (repeat === "monthly" ? steps : 0));
+    const last = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
+    date.setUTCDate(Math.min(d, last));
+  }
+  return date.toISOString().slice(0, 10);
+}
+
+function nextPendingOccurrence(raw, today, timestamp) {
+  const item = normalizePendingTask(raw);
+  if (!item.repeat || (!item.anchorStart && !item.anchorDue)) return null;
+  let step = item.repeatIndex + 1;
+  const anchor = item.anchorStart || item.anchorDue;
+  if (item.repeat === "daily" || item.repeat === "weekly") step = Math.max(step, Math.floor(pendingDaysBetween(anchor, today) / (item.repeat === "weekly" ? 7 : 1)) + 1);
+  else {
+    const months = (Number(today.slice(0, 4)) - Number(anchor.slice(0, 4))) * 12 + Number(today.slice(5, 7)) - Number(anchor.slice(5, 7));
+    step = Math.max(step, Math.floor(months / (item.repeat === "yearly" ? 12 : 1)));
+  }
+  while (shiftPendingDate(anchor, item.repeat, step) <= today) step++;
+  return normalizePendingTask({ ...item, id: `${item.seriesId}~${step}`, repeatIndex: step,
+    startDate: shiftPendingDate(item.anchorStart, item.repeat, step),
+    dueDate: shiftPendingDate(item.anchorDue, item.repeat, step),
+    completedAt: "", deletedAt: "", nextPendingId: "", createdAt: timestamp, updatedAt: timestamp });
+}
+
+function loadPendingTasks() {
+  try { const items = JSON.parse(localStorage.getItem("tiempos.pendingTasks.100v34") || "[]"); return Array.isArray(items) ? mergePendingTasks([], items) : []; } catch { return []; }
+}
+
+function persistPendingTasks() {
+  localStorage.setItem("tiempos.pendingTasks.100v34", JSON.stringify(state.pendingTasks));
 }

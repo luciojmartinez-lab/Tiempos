@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { getStore } from "@netlify/blobs";
 
 const STORE_NAME = "tiempos-sync";
-const SYNC_VERSION = "100v33";
+const SYNC_VERSION = "100v34";
 const BULK_MIGRATION_LIMIT = 5;
 const LEGACY_UPDATED_AT = "2000-01-01T00:00:00.000Z";
 
@@ -34,7 +34,7 @@ export default async (req) => {
     const merged =
       mode === "replace" || shouldUseCloudOnly(remote, payload)
         ? mode === "replace"
-          ? replaceStore(payload)
+          ? replaceStore(payload, remote)
           : remote
         : mergeStores(remote, payload);
     enforceTrackingPolicy(merged);
@@ -72,6 +72,7 @@ function mergeStores(remote, incoming) {
     );
   }
   const merged = {
+    pendingTasks: mergePendingTasks(remote.pendingTasks, (incoming.pendingTasks || []).filter(item => !remote.resetAt || item.updatedAt > remote.resetAt || remote.pendingTasks.some(old => old.id === item.id))),
     entries: [],
     deletedEntries: [],
     customTasks: uniqueTasks([
@@ -109,11 +110,15 @@ function mergeStores(remote, incoming) {
   return merged;
 }
 
-function replaceStore(incoming) {
+function replaceStore(incoming, remote = {}) {
+  const linkedIds = new Map((remote.entries || []).map(entry => [entry.id, entry.pendingId]));
+  incoming = { ...incoming, pendingTasks: incoming.pendingTasks ?? remote.pendingTasks,
+    entries: (incoming.entries || []).map(entry => ({ ...entry, pendingId: entry.pendingId || linkedIds.get(entry.id) || "" })) };
   const deletedIds = new Set(
     (incoming.deletedEntries || []).map((item) => cleanText(item.id)),
   );
   return {
+    pendingTasks: mergePendingTasks([], incoming.pendingTasks || []),
     entries: repairLegacyMigrationEntries(incoming.entries || [])
       .filter((entry) => entry.id && !deletedIds.has(entry.id))
       .sort(compareEntries),
@@ -133,6 +138,7 @@ function repairStore(store) {
     (store.deletedEntries || []).map((item) => cleanText(item.id)),
   );
   return {
+    pendingTasks: mergePendingTasks([], store.pendingTasks || []),
     entries: repairLegacyMigrationEntries(store.entries || [])
       .filter((entry) => entry.id && !deletedIds.has(entry.id))
       .sort(compareEntries),
@@ -242,6 +248,7 @@ function mergeEntryValues(first, second) {
 
   return normalizeEntry({
     ...newer,
+    pendingId: newer.pendingId || older.pendingId,
     createdAt:
       compareDate(first.createdAt, second.createdAt) <= 0
         ? first.createdAt
@@ -283,6 +290,7 @@ function normalizeEntry(entry) {
 
   return {
     id: cleanText(entry.id),
+    pendingId: cleanText(entry.pendingId),
     date: cleanText(entry.date),
     startDate: cleanText(entry.startDate || entry.date),
     endDate: cleanText(entry.endDate),
@@ -483,4 +491,40 @@ function cleanText(value) {
 
 function now() {
   return new Date().toISOString();
+}
+
+function pendingDate(value) {
+  const text = String(value || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return "";
+  const d = new Date(text + "T12:00:00Z");
+  return Number.isFinite(d.getTime()) && d.toISOString().slice(0, 10) === text ? text : "";
+}
+
+function normalizePendingTask(item = {}) {
+  const date = (v) => pendingDate(v);
+  const stamp = (v) => { const d = new Date(v || ""); return Number.isFinite(d.getTime()) ? d.toISOString() : ""; };
+  const startDate = date(item.startDate), dueDate = date(item.dueDate);
+  return {
+    id: String(item.id || ""), task: String(item.task || "").trim().toUpperCase(),
+    description: String(item.description || "").trim(), notes: String(item.notes || "").trim(),
+    startDate, dueDate, completedAt: stamp(item.completedAt), deletedAt: stamp(item.deletedAt),
+    updatedAt: stamp(item.updatedAt) || "2000-01-01T00:00:00.000Z",
+    createdAt: stamp(item.createdAt) || stamp(item.updatedAt) || "2000-01-01T00:00:00.000Z",
+    repeat: ["daily", "weekly", "monthly", "yearly"].includes(item.repeat) ? item.repeat : "",
+    seriesId: String(item.seriesId || item.id || ""),
+    repeatIndex: Math.max(0, Math.floor(Number(item.repeatIndex) || 0)),
+    anchorStart: date(item.anchorStart) || startDate, anchorDue: date(item.anchorDue) || dueDate,
+    nextPendingId: String(item.nextPendingId || ""),
+  };
+}
+
+function mergePendingTasks(first = [], second = []) {
+  const records = new Map();
+  for (const raw of [...first, ...second]) {
+    const item = normalizePendingTask(raw);
+    if (!item.id) continue;
+    const old = records.get(item.id);
+    if (!old || item.updatedAt > old.updatedAt || (item.updatedAt === old.updatedAt && JSON.stringify(item) > JSON.stringify(old))) records.set(item.id, item);
+  }
+  return [...records.values()].sort((a, b) => a.id.localeCompare(b.id));
 }
