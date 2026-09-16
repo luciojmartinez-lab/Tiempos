@@ -1081,6 +1081,15 @@ th:nth-child(10) {
   overflow: hidden;
 }
 
+.chart-control-head {
+  align-items: center;
+}
+
+.chart-control-head select {
+  min-width: 150px;
+  max-width: 240px;
+}
+
 .summary-table {
   margin: 12px;
   border: 1px solid var(--line-strong);
@@ -1165,13 +1174,18 @@ th:nth-child(10) {
 }
 
 .vertical {
+  --bar-count: 12;
   display: grid;
-  grid-template-columns: repeat(12, minmax(34px, 1fr));
+  grid-template-columns: repeat(var(--bar-count), minmax(34px, 1fr));
   align-items: end;
   gap: 8px;
   height: 235px;
   padding-top: 18px;
   border-top: 1px solid var(--line);
+}
+
+.year-chart {
+  grid-template-columns: repeat(var(--bar-count), minmax(52px, 1fr));
 }
 
 .month-bar {
@@ -1683,6 +1697,16 @@ th:nth-child(10) {
 
   .section-head h1 {
     font-size: 16px;
+  }
+
+  .chart-control-head select {
+    width: 100%;
+    max-width: none;
+  }
+
+  .year-chart {
+    grid-template-columns: repeat(var(--bar-count), minmax(30px, 1fr));
+    gap: 5px;
   }
 
   .table-actions {

@@ -5,7 +5,7 @@ const DELETED_ENTRIES_KEY = "tiempos.deletedEntries.100v11";
 const SYNC_SETTINGS_KEY = "tiempos.syncSettings.100v11";
 const TRACKING_SETTINGS_KEY = "tiempos.trackingSettings.100v24";
 const ENTRY_DRAFT_KEY = "tiempos.entryDraft.100v25";
-const APP_VERSION = "100v34";
+const APP_VERSION = "100v35";
 const TRACKING_ACTION_LOCK_MS = 850;
 const ALL_YEARS_VALUE = "all";
 const SYNC_ENDPOINT = "/api/sync";
@@ -110,6 +110,7 @@ const state = {
   monthFilter: "",
   sortOrder: "desc",
   chartYear: currentYear(),
+  chartTask: "",
 };
 
 const els = {};
@@ -203,6 +204,11 @@ function bindElements() {
     taskChart: document.getElementById("task-chart"),
     monthSummary: document.getElementById("month-summary"),
     monthChart: document.getElementById("month-chart"),
+    yearSummary: document.getElementById("year-summary"),
+    yearChart: document.getElementById("year-chart"),
+    taskYearFilter: document.getElementById("task-year-chart-filter"),
+    taskYearSummary: document.getElementById("task-year-summary"),
+    taskYearChart: document.getElementById("task-year-chart"),
   });
 }
 
@@ -354,6 +360,10 @@ function bindEvents() {
   });
   els.chartYearFilter.addEventListener("change", () => {
     state.chartYear = els.chartYearFilter.value;
+    renderCharts();
+  });
+  els.taskYearFilter.addEventListener("change", () => {
+    state.chartTask = els.taskYearFilter.value;
     renderCharts();
   });
   els.loadFile.addEventListener("click", () => els.fileInput.click());
@@ -1970,14 +1980,25 @@ function sortRowsForDisplay(rows) {
 
 function renderCharts() {
   updateChartYearOptions();
-  const rows = filterRowsByChartYear(computeRows());
+  updateTaskYearOptions();
+
+  const allRows = computeRows();
+  const rows = filterRowsByChartYear(allRows);
   const byTask = groupMinutes(rows, (row) => row.task);
   const byMonth = groupMonths(rows);
+  const byYear = groupYears(allRows);
+  const taskYearRows = groupTaskYears(allRows, state.chartTask);
   const taskRows = [...byTask.entries()]
     .sort((a, b) => b[1] - a[1])
     .filter((item) => item[1] > 0);
   const monthRows = MONTHS.map((label, index) => [label, byMonth.get(index) || 0]);
+  const yearRows = getDataYears()
+    .slice()
+    .reverse()
+    .map((year) => [year, byYear.get(year) || 0]);
   const total = taskRows.reduce((sum, item) => sum + item[1], 0);
+  const yearlyTotal = yearRows.reduce((sum, item) => sum + item[1], 0);
+  const taskYearTotal = taskYearRows.reduce((sum, item) => sum + item[1], 0);
 
   els.chartTotal.textContent = minutesToDuration(total);
   els.chartTopTask.textContent = taskRows[0]?.[0] || "-";
@@ -1996,6 +2017,18 @@ function renderCharts() {
     monthRows,
     monthRows.reduce((sum, item) => sum + item[1], 0),
   );
+  els.yearSummary.innerHTML = summaryMarkup(
+    "AÑOS",
+    "Horas",
+    yearRows,
+    yearlyTotal,
+  );
+  els.taskYearSummary.innerHTML = summaryMarkup(
+    "AÑOS",
+    state.chartTask || "Tarea",
+    taskYearRows,
+    taskYearTotal,
+  );
 
   const maxTask = Math.max(...taskRows.map((item) => item[1]), 1);
   els.taskChart.innerHTML = taskRows
@@ -2011,21 +2044,48 @@ function renderCharts() {
     )
     .join("");
 
-  const maxMonth = Math.max(...monthRows.map((item) => item[1]), 1);
-  els.monthChart.innerHTML = monthRows
+  renderVerticalChart(els.monthChart, monthRows);
+  renderVerticalChart(els.yearChart, yearRows);
+  renderVerticalChart(els.taskYearChart, taskYearRows);
+}
+function renderVerticalChart(element, rows) {
+  const visibleRows = rows.filter((item) => item[1] > 0);
+  const chartRows = visibleRows.length ? visibleRows : rows;
+  const maxMinutes = Math.max(...chartRows.map((item) => item[1]), 1);
+  const columnCount = Math.max(chartRows.length, 1);
+
+  element.style.setProperty("--bar-count", columnCount);
+  element.innerHTML = chartRows
     .map(
       ([label, minutes]) => `<div class="month-bar">
         <span class="month-bar-fill" style="height:${Math.max(
           2,
-          (minutes / maxMonth) * 100,
+          (minutes / maxMinutes) * 100,
         )}%"></span>
         <strong>${minutes ? minutesToDuration(minutes) : ""}</strong>
-        <span>${label}</span>
+        <span>${escapeHtml(label)}</span>
       </div>`,
     )
     .join("");
 }
 
+function updateTaskYearOptions() {
+  const tasks = [...groupMinutes(computeRows(), (row) => row.task).entries()]
+    .filter((item) => item[1] > 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([task]) => task);
+
+  if (!tasks.includes(state.chartTask)) {
+    state.chartTask = tasks[0] || "";
+  }
+
+  els.taskYearFilter.innerHTML = tasks.length
+    ? tasks
+        .map((task) => `<option value="${escapeAttr(task)}">${escapeHtml(task)}</option>`)
+        .join("")
+    : `<option value="">Sin tareas</option>`;
+  els.taskYearFilter.value = state.chartTask;
+}
 function updateChartYearOptions() {
   const years = getDataYears();
   const options = [
@@ -2164,6 +2224,21 @@ function groupMonths(rows) {
   return map;
 }
 
+function groupYears(rows) {
+  const map = new Map();
+  rows.forEach((row) => {
+    const year = String(row.date || "").slice(0, 4);
+    if (!/^\d{4}$/.test(year)) return;
+    map.set(year, (map.get(year) || 0) + row.partialMinutes);
+  });
+  return map;
+}
+
+function groupTaskYears(rows, task) {
+  const years = getDataYears().slice().reverse();
+  const byYear = groupYears(rows.filter((row) => row.task === task));
+  return years.map((year) => [year, byYear.get(year) || 0]);
+}
 function compareEntries(a, b) {
   return `${a.date || ""} ${a.start || ""} ${a.id}`.localeCompare(
     `${b.date || ""} ${b.start || ""} ${b.id}`,
