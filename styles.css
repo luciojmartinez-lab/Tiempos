@@ -1143,6 +1143,10 @@ th:nth-child(10) {
   margin-bottom: 8px;
 }
 
+#task-share-chart .bar-line {
+  grid-template-columns: 116px minmax(0, 1fr) 52px;
+}
+
 .bar-label,
 .bar-value {
   overflow: hidden;

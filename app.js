@@ -5,7 +5,7 @@ const DELETED_ENTRIES_KEY = "tiempos.deletedEntries.100v11";
 const SYNC_SETTINGS_KEY = "tiempos.syncSettings.100v11";
 const TRACKING_SETTINGS_KEY = "tiempos.trackingSettings.100v24";
 const ENTRY_DRAFT_KEY = "tiempos.entryDraft.100v25";
-const APP_VERSION = "100v35";
+const APP_VERSION = "100v36";
 const TRACKING_ACTION_LOCK_MS = 850;
 const ALL_YEARS_VALUE = "all";
 const SYNC_ENDPOINT = "/api/sync";
@@ -209,6 +209,10 @@ function bindElements() {
     taskYearFilter: document.getElementById("task-year-chart-filter"),
     taskYearSummary: document.getElementById("task-year-summary"),
     taskYearChart: document.getElementById("task-year-chart"),
+    yearAverageSummary: document.getElementById("year-average-summary"),
+    yearAverageChart: document.getElementById("year-average-chart"),
+    taskShareSummary: document.getElementById("task-share-summary"),
+    taskShareChart: document.getElementById("task-share-chart"),
   });
 }
 
@@ -1987,6 +1991,7 @@ function renderCharts() {
   const byTask = groupMinutes(rows, (row) => row.task);
   const byMonth = groupMonths(rows);
   const byYear = groupYears(allRows);
+  const yearAverageRows = groupYearAverages(allRows);
   const taskYearRows = groupTaskYears(allRows, state.chartTask);
   const taskRows = [...byTask.entries()]
     .sort((a, b) => b[1] - a[1])
@@ -2029,6 +2034,8 @@ function renderCharts() {
     taskYearRows,
     taskYearTotal,
   );
+  els.yearAverageSummary.innerHTML = yearAverageSummaryMarkup(yearAverageRows);
+  els.taskShareSummary.innerHTML = taskShareSummaryMarkup(taskRows, total);
 
   const maxTask = Math.max(...taskRows.map((item) => item[1]), 1);
   els.taskChart.innerHTML = taskRows
@@ -2047,6 +2054,8 @@ function renderCharts() {
   renderVerticalChart(els.monthChart, monthRows);
   renderVerticalChart(els.yearChart, yearRows);
   renderVerticalChart(els.taskYearChart, taskYearRows);
+  renderVerticalChart(els.yearAverageChart, yearAverageRows.map((row) => [row.year, row.averageMinutes]));
+  renderTaskShareChart(taskRows, total);
 }
 function renderVerticalChart(element, rows) {
   const visibleRows = rows.filter((item) => item[1] > 0);
@@ -2069,6 +2078,68 @@ function renderVerticalChart(element, rows) {
     .join("");
 }
 
+function renderTaskShareChart(taskRows, totalMinutes) {
+  const rows = taskRows.filter((item) => item[1] > 0);
+  els.taskShareChart.innerHTML = rows.length
+    ? rows
+        .map(([label, minutes]) => {
+          const share = totalMinutes ? (minutes / totalMinutes) * 100 : 0;
+          return `<div class="bar-line">
+            <span class="bar-label">${escapeHtml(label)}</span>
+            <span class="bar-track"><span class="bar-fill" style="width:${Math.max(2, share)}%"></span></span>
+            <strong class="bar-value">${formatPercent(share)}</strong>
+          </div>`;
+        })
+        .join("")
+    : `<div class="bar-line"><span class="bar-label">Sin datos</span><span class="bar-track"></span><strong class="bar-value">0%</strong></div>`;
+}
+
+function yearAverageSummaryMarkup(rows) {
+  const body = rows
+    .filter((row) => row.totalMinutes > 0)
+    .map(
+      (row) => `<div class="summary-row">
+        <span>${escapeHtml(row.year)} · ${row.days} dias</span>
+        <strong>${minutesToDuration(row.averageMinutes)}</strong>
+      </div>`,
+    )
+    .join("");
+
+  return `<div class="summary-row header">
+      <span>AÑOS</span>
+      <strong>Media</strong>
+    </div>
+    ${body || `<div class="summary-row"><span>Sin datos</span><strong>0:00</strong></div>`}`;
+}
+
+function taskShareSummaryMarkup(rows, totalMinutes) {
+  const body = rows
+    .filter((row) => row[1] > 0)
+    .map(([label, minutes]) => {
+      const share = totalMinutes ? (minutes / totalMinutes) * 100 : 0;
+      return `<div class="summary-row">
+        <span>${escapeHtml(label)}</span>
+        <strong>${formatPercent(share)}</strong>
+      </div>`;
+    })
+    .join("");
+
+  return `<div class="summary-row header">
+      <span>TAREAS</span>
+      <strong>%</strong>
+    </div>
+    ${body || `<div class="summary-row"><span>Sin datos</span><strong>0%</strong></div>`}
+    <div class="summary-row total">
+      <span>Total general</span>
+      <strong>${minutesToDuration(totalMinutes)}</strong>
+    </div>`;
+}
+
+function formatPercent(value) {
+  if (!Number.isFinite(value) || value <= 0) return "0%";
+  const rounded = Math.round(value * 10) / 10;
+  return `${String(rounded).replace(".", ",")}%`;
+}
 function updateTaskYearOptions() {
   const tasks = [...groupMinutes(computeRows(), (row) => row.task).entries()]
     .filter((item) => item[1] > 0)
@@ -2234,6 +2305,33 @@ function groupYears(rows) {
   return map;
 }
 
+function groupYearAverages(rows) {
+  const stats = new Map();
+  rows.forEach((row) => {
+    const year = String(row.date || "").slice(0, 4);
+    if (!/^\d{4}$/.test(year)) return;
+    if (!stats.has(year)) {
+      stats.set(year, { year, totalMinutes: 0, dates: new Set() });
+    }
+    const item = stats.get(year);
+    item.totalMinutes += row.partialMinutes;
+    if (row.date) item.dates.add(row.date);
+  });
+
+  return getDataYears()
+    .slice()
+    .reverse()
+    .map((year) => {
+      const item = stats.get(year) || { year, totalMinutes: 0, dates: new Set() };
+      const days = item.dates.size;
+      return {
+        year,
+        days,
+        totalMinutes: item.totalMinutes,
+        averageMinutes: days ? Math.round(item.totalMinutes / days) : 0,
+      };
+    });
+}
 function groupTaskYears(rows, task) {
   const years = getDataYears().slice().reverse();
   const byYear = groupYears(rows.filter((row) => row.task === task));

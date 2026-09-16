@@ -10,13 +10,13 @@
     <meta name="apple-mobile-web-app-title" content="Tiempos" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
-    <link rel="stylesheet" href="/styles.css?v=100v35" />
+    <link rel="stylesheet" href="/styles.css?v=100v36" />
     <script
       defer
       src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"
     ></script>
-    <script defer src="/app.js?v=100v35"></script>
-    <script defer src="/pending.js?v=100v35"></script>
+    <script defer src="/app.js?v=100v36"></script>
+    <script defer src="/pending.js?v=100v36"></script>
   </head>
   <body>
     <header class="top-navbar">
@@ -27,7 +27,7 @@
             ><span class="live-indicator"></span> Control de trabajo</span
           >
         </div>
-        <span class="version-badge">100v35</span>
+        <span class="version-badge">100v36</span>
       </div>
       <nav class="navbar-row-menu" aria-label="Hojas">
         <button class="nav-item active" type="button" data-view="datos">
@@ -426,6 +426,20 @@
             </div>
             <div class="summary-table" id="task-year-summary"></div>
             <div class="bar-chart vertical year-chart" id="task-year-chart"></div>
+          </div>
+          <div class="chart-panel">
+            <div class="section-head">
+              <h1>Promedio diario por año</h1>
+            </div>
+            <div class="summary-table" id="year-average-summary"></div>
+            <div class="bar-chart vertical year-chart" id="year-average-chart"></div>
+          </div>
+          <div class="chart-panel">
+            <div class="section-head">
+              <h1>Reparto por tareas</h1>
+            </div>
+            <div class="summary-table" id="task-share-summary"></div>
+            <div class="bar-chart horizontal" id="task-share-chart"></div>
           </div>
         </section>
       </section>
