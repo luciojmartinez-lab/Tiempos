@@ -5,7 +5,7 @@ const DELETED_ENTRIES_KEY = "tiempos.deletedEntries.100v11";
 const SYNC_SETTINGS_KEY = "tiempos.syncSettings.100v11";
 const TRACKING_SETTINGS_KEY = "tiempos.trackingSettings.100v24";
 const ENTRY_DRAFT_KEY = "tiempos.entryDraft.100v25";
-const APP_VERSION = "100v37";
+const APP_VERSION = "100v38";
 const TRACKING_ACTION_LOCK_MS = 850;
 const ALL_YEARS_VALUE = "all";
 const SYNC_ENDPOINT = "/api/sync";
@@ -127,6 +127,11 @@ function init() {
   setTrackingFormValues();
   setTodayIfEmpty();
   restoreSavedEntryDraft();
+  if (!state.editingId && els.task.value) {
+    els.task.value = "";
+    updateTaskButtonState();
+    persistEntryDraft();
+  }
   updateDateFilterState();
   updateSyncStatus();
   render();
