@@ -5,7 +5,7 @@ const DELETED_ENTRIES_KEY = "tiempos.deletedEntries.100v11";
 const SYNC_SETTINGS_KEY = "tiempos.syncSettings.100v11";
 const TRACKING_SETTINGS_KEY = "tiempos.trackingSettings.100v24";
 const ENTRY_DRAFT_KEY = "tiempos.entryDraft.100v25";
-const APP_VERSION = "100v36";
+const APP_VERSION = "100v37";
 const TRACKING_ACTION_LOCK_MS = 850;
 const ALL_YEARS_VALUE = "all";
 const SYNC_ENDPOINT = "/api/sync";
@@ -219,7 +219,7 @@ function bindElements() {
 function buildTaskControls() {
   const taskList = getTaskList();
 
-  els.task.innerHTML = taskList
+  els.task.innerHTML = '<option value="">Selecciona una tarea</option>' + taskList
     .map(
       (task) => `<option value="${escapeAttr(task)}">${escapeHtml(task)}</option>`,
     )
@@ -450,7 +450,7 @@ function deleteSelectedTask() {
   persistCustomTasks();
   persistDeletedTasks();
   buildTaskControls();
-  els.task.value = getTaskList()[0] || "";
+  els.task.value = "";
   updateTaskButtonState();
 }
 
@@ -729,10 +729,7 @@ function uniqueTasks(tasks) {
 }
 
 function startNewEntryFromButton() {
-  const selectedTask = els.task.value || getTaskList()[0] || TASKS[0];
   resetForm();
-  els.task.value = selectedTask;
-  updateTaskButtonState();
   openEntryModal();
 }
 
@@ -1231,7 +1228,11 @@ function syncMainDatesFromSegmentEditor(event) {
 
 function startTrackingFromForm() {
   const task = cleanText(els.task.value).toUpperCase();
-  if (!task) return;
+  if (!task) {
+    els.task.focus();
+    els.task.reportValidity();
+    return;
+  }
 
   const now = new Date();
   const nowIso = now.toISOString();
@@ -1457,7 +1458,7 @@ function editEntry(id, options = {}) {
 
   state.editingId = id;
   els.date.value = entry.startDate || entry.date || todayISO();
-  els.task.value = entry.task || TASKS[0];
+  els.task.value = entry.task || "";
   els.description.value = entry.description || "";
   els.notes.value = entry.notes || "";
   els.start.value = entry.start || "";
@@ -1477,7 +1478,7 @@ function resetForm() {
   els.form.reset();
   els.date.value = todayISO();
   els.endDate.value = todayISO();
-  els.task.value = getTaskList()[0] || TASKS[0];
+  els.task.value = "";
   els.save.textContent = "Guardar";
   setEntryFormLock(false, false);
   renderSegmentEditor(null);
@@ -1521,6 +1522,7 @@ function captureEntryDraft() {
     date: els.date.value,
     task: els.task.value,
     description: els.description.value,
+    descriptionInitialized: true,
     notes: els.notes.value,
     start: els.start.value,
     end: els.end.value,
@@ -1553,8 +1555,10 @@ function restoreEntryDraft(draft) {
   }
 
   els.date.value = draft.date || todayISO();
-  els.task.value = draft.task || getTaskList()[0] || TASKS[0];
-  els.description.value = draft.description || "";
+  els.task.value = Object.hasOwn(draft, "task") ? draft.task || "" : editingEntry?.task || "";
+  els.description.value = !editingExists && !draft.descriptionInitialized && !draft.description
+    ? "Entrar Datos"
+    : draft.description ?? "Entrar Datos";
   els.notes.value = draft.notes || "";
   els.start.value = draft.start || "";
   els.end.value = draft.end || "";
@@ -1654,7 +1658,6 @@ function clearEntryDraft() {
 function setTodayIfEmpty() {
   if (!els.date.value) els.date.value = todayISO();
   if (!els.endDate.value) els.endDate.value = els.date.value;
-  if (!els.task.value) els.task.value = getTaskList()[0] || TASKS[0];
   updateTaskButtonState();
 }
 
